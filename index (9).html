@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WORD STORM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#000;overflow:hidden;font-family:'Space Mono',monospace;}
+  canvas{display:block;}
+  #score{position:fixed;top:20px;left:50%;transform:translateX(-50%);color:#00ff88;font-size:26px;font-weight:700;text-shadow:0 0 20px #00ff88;letter-spacing:4px;}
+  #combo{position:fixed;top:60px;left:50%;transform:translateX(-50%);color:#ff8800;font-size:18px;text-shadow:0 0 10px #ff8800;transition:opacity 0.3s;}
+  #lives{position:fixed;top:20px;right:20px;color:#ff4444;font-size:20px;text-shadow:0 0 10px #ff0000;}
+  #wpm{position:fixed;top:20px;left:20px;color:#8888ff;font-size:16px;text-shadow:0 0 8px #4444ff;}
+  #inputBar{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:400px;max-width:90vw;}
+  #typeInput{width:100%;background:rgba(0,255,136,0.05);border:2px solid #00ff88;border-radius:4px;color:#00ff88;font-family:'Space Mono',monospace;font-size:22px;padding:12px 20px;outline:none;text-align:center;letter-spacing:4px;text-transform:uppercase;box-shadow:0 0 20px rgba(0,255,136,0.2);caret-color:#00ff88;}
+  #typeInput:focus{box-shadow:0 0 30px rgba(0,255,136,0.4);}
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+  h1{color:#00ff88;font-size:50px;font-weight:700;text-shadow:0 0 25px #00ff88;margin-bottom:15px;letter-spacing:6px;}
+  p{color:#88ff88;font-size:14px;line-height:2.2;text-align:center;margin-bottom:30px;}
+  button{background:transparent;border:2px solid #00ff88;color:#00ff88;font-family:'Space Mono',monospace;font-size:16px;font-weight:700;padding:12px 40px;cursor:pointer;letter-spacing:4px;transition:all 0.3s;box-shadow:0 0 15px rgba(0,255,136,0.3);}
+  button:hover{background:rgba(0,255,136,0.1);box-shadow:0 0 30px rgba(0,255,136,0.5);}
+  #fs{color:#ffff00;font-size:28px;margin:15px 0;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="score">0 PTS</div>
+<div id="combo"></div>
+<div id="lives">💻💻💻</div>
+<div id="wpm">WPM: 0</div>
+<div id="inputBar" style="display:none">
+  <input id="typeInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="TYPE HERE...">
+</div>
+<div id="overlay">
+  <h1>&gt; WORD STORM_</h1>
+  <p>Words are falling from the digital sky!<br>Type the words before they hit the ground.<br>Faster typing = more points per word.<br>If a word crashes, you lose a life!</p>
+  <button onclick="startGame()">BOOT SYSTEM</button>
+  <div id="fs"></div>
+</div>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W=canvas.width=window.innerWidth,H=canvas.height=window.innerHeight;
+window.onresize=()=>{W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;};
+
+let audioCtx;
+function initAudio(){audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
+function keyClick(){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.connect(g);g.connect(audioCtx.destination);
+  o.type='square';o.frequency.value=200+Math.random()*300;
+  g.gain.setValueAtTime(0.08,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.06);
+  o.start();o.stop(audioCtx.currentTime+0.07);
+}
+function wordDestroy(freq=880){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.connect(g);g.connect(audioCtx.destination);
+  o.type='sawtooth';o.frequency.setValueAtTime(freq*2,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(freq,audioCtx.currentTime+0.15);
+  g.gain.setValueAtTime(0.2,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.2);
+  o.start();o.stop(audioCtx.currentTime+0.25);
+}
+function wordCrash(){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.connect(g);g.connect(audioCtx.destination);
+  o.type='sawtooth';o.frequency.value=80;
+  g.gain.setValueAtTime(0.3,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.5);
+  o.start();o.stop(audioCtx.currentTime+0.6);
+}
+
+const WORDS=[
+  'BYTE','CODE','HACK','DATA','LOOP','NODE','PORT','SYNC','FLUX','GRID',
+  'CORE','PING','ROOT','NULL','HEAP','STACK','QUEUE','CACHE','PARSE','TOKEN',
+  'ARRAY','CLOUD','DEBUG','EVENT','FIBER','GRAPH','INDEX','KERNEL','LAMBDA','MUTEX',
+  'NEXUS','ORBIT','PIXEL','QUERY','REGEX','SCOPE','THREAD','UNION','VECTOR','WASM',
+  'XCODE','YIELD','ZLIB','ALPHA','BLOCK','CLONE','DELTA','EPOCH','FETCH'
+];
+
+let gameRunning=false,score=0,lives=3,combo=0,comboTimer=0,wpmTotal=0,wordCount=0;
+let words=[],particles=[];
+let spawnTimer=0,gameSpeed=1;
+let typedCorrect=0,sessionStart=0;
+
+function spawnWord(){
+  const word=WORDS[Math.floor(Math.random()*WORDS.length)];
+  const x=60+Math.random()*(W-120);
+  const speed=0.4+gameSpeed*0.2+Math.random()*0.3;
+  const hue=Math.random()*60+140; // green-cyan range
+  words.push({
+    word,x,y:-40,speed,
+    typed:'',color:`hsl(${hue},100%,65%)`,
+    shadow:`hsl(${hue},100%,40%)`,
+    wobble:Math.random()*Math.PI*2,wobbleSpeed:0.02+Math.random()*0.02,
+    alpha:1,
+  });
+}
+
+const inputEl=document.getElementById('typeInput');
+inputEl.addEventListener('input',e=>{
+  const val=e.target.value.toUpperCase().trim();
+  keyClick();
+  // Check if it matches any word
+  words.forEach(w=>{
+    if(w.typed===w.word)return;
+    if(w.word.startsWith(val)&&val.length>0){
+      w.typed=val;
+    }
+  });
+  // Check full match
+  const matched=words.find(w=>w.word===val&&w.alpha>0.5);
+  if(matched){
+    wordDestroy(660+words.indexOf(matched)*30);
+    matched.alpha=0;
+    combo++;
+    clearTimeout(comboTimer);
+    comboTimer=setTimeout(()=>{combo=0;document.getElementById('combo').textContent='';},2000);
+    const timeFactor=Math.max(1,3-(matched.y/H*2));
+    const pts=Math.floor(matched.word.length*10*combo*timeFactor);
+    score+=pts;
+    wordCount++;
+    const now=Date.now();
+    wpmTotal=Math.round(wordCount/((now-sessionStart)/60000));
+    document.getElementById('score').textContent=`${score} PTS`;
+    document.getElementById('wpm').textContent=`WPM: ${wpmTotal}`;
+    if(combo>1){document.getElementById('combo').textContent=`${combo}x COMBO! +${pts}`;}
+    // Particles
+    for(let i=0;i<15;i++){
+      particles.push({x:matched.x,y:matched.y,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8,
+        life:1,color:matched.color,r:3+Math.random()*4,char:matched.word[Math.floor(Math.random()*matched.word.length)]});
+    }
+    inputEl.value='';
+    // Reset typed state for others
+    words.forEach(w=>{if(w!==matched)w.typed='';});
+  }
+});
+
+function update(dt){
+  if(!gameRunning)return;
+  spawnTimer+=dt;
+  gameSpeed=1+score/500;
+  const spawnRate=Math.max(1200,2500-score*2);
+  if(spawnTimer>spawnRate&&words.filter(w=>w.alpha>0.5).length<8){
+    spawnTimer=0;spawnWord();
+  }
+
+  words.forEach(w=>{
+    if(w.alpha<=0)return;
+    w.y+=w.speed*(dt/16);
+    w.wobble+=w.wobbleSpeed;
+    if(w.y>H-50){
+      w.alpha=0;lives--;
+      wordCrash();
+      document.getElementById('lives').textContent='💻'.repeat(Math.max(0,lives));
+      combo=0;document.getElementById('combo').textContent='';
+      words.forEach(ww=>{ww.typed='';});
+      inputEl.value='';
+      // Crash particles
+      for(let i=0;i<20;i++){
+        particles.push({x:w.x,y:H-50,vx:(Math.random()-0.5)*10,vy:-2-Math.random()*6,
+          life:1,color:'#ff2200',r:4+Math.random()*4});
+      }
+      if(lives<=0)endGame();
+    }
+  });
+
+  words=words.filter(w=>w.alpha>0||w.y<H+50);
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.life-=0.03;p.vy+=0.1;});
+  particles=particles.filter(p=>p.life>0);
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#000500');bg.addColorStop(1,'#000200');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+  // Scanlines
+  for(let y=0;y<H;y+=4){
+    ctx.fillStyle='rgba(0,0,0,0.15)';ctx.fillRect(0,y,W,2);
+  }
+
+  // Matrix-like background characters
+  const time=Date.now()*0.001;
+  ctx.font='12px Space Mono';ctx.textAlign='center';
+  for(let i=0;i<30;i++){
+    const bx=(Math.sin(i*137.5)*0.5+0.5)*W;
+    const by=((time*0.3*(1+i*0.1)+i*0.7)%1)*H;
+    const a=0.05+Math.sin(time+i)*0.05;
+    ctx.fillStyle=`rgba(0,180,60,${a})`;
+    ctx.fillText(String.fromCharCode(65+Math.floor(Math.sin(time*3+i)*13+13)),bx,by);
+  }
+
+  // Ground line
+  ctx.strokeStyle='rgba(0,255,136,0.3)';ctx.lineWidth=2;ctx.setLineDash([10,15]);
+  ctx.beginPath();ctx.moveTo(0,H-40);ctx.lineTo(W,H-40);ctx.stroke();ctx.setLineDash([]);
+  ctx.shadowColor='#00ff88';ctx.shadowBlur=10;ctx.stroke();ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(0,255,136,0.1)';ctx.fillRect(0,H-40,W,40);
+
+  // Words
+  const typed=inputEl.value.toUpperCase();
+  words.forEach(w=>{
+    if(w.alpha<=0)return;
+    const wobX=Math.sin(w.wobble)*2;
+    const danger=w.y/H;
+    const col=danger>0.7?`rgba(255,${Math.floor(200-danger*200)},0,${w.alpha})`:w.color;
+    ctx.save();
+    ctx.globalAlpha=w.alpha;
+    // Word shadow
+    ctx.shadowColor=w.shadow;ctx.shadowBlur=danger>0.7?20:10;
+    // Calculate glyph by glyph
+    const charW=22,totalW=w.word.length*charW;
+    w.word.split('').forEach((ch,ci)=>{
+      const cx=w.x+wobX-totalW/2+ci*charW+charW/2;
+      const isTyped=ci<w.typed.length;
+      ctx.font=`bold 28px 'Space Mono',monospace`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      if(isTyped){
+        ctx.fillStyle='#ffffff';
+        ctx.shadowColor='#ffffff';ctx.shadowBlur=20;
+      } else {
+        ctx.fillStyle=col;
+        ctx.shadowColor=w.shadow;ctx.shadowBlur=danger>0.7?20:10;
+      }
+      ctx.fillText(ch,cx,w.y);
+    });
+    // Underline for typed portion
+    if(w.typed.length>0){
+      ctx.fillStyle='#ffffff';ctx.shadowColor='#fff';ctx.shadowBlur=5;
+      ctx.fillRect(w.x+wobX-totalW/2,w.y+18,w.typed.length*charW,2);
+    }
+    ctx.restore();
+    // Speed indicator dots
+    const dotCount=Math.floor(w.speed*2);
+    for(let i=0;i<dotCount;i++){
+      ctx.beginPath();ctx.arc(w.x+wobX,w.y-25-i*8,2,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,100,0,${0.3*w.alpha})`;ctx.fill();
+    }
+  });
+
+  // Particles
+  particles.forEach(p=>{
+    ctx.save();ctx.globalAlpha=p.life;
+    if(p.char){
+      ctx.font=`bold 14px Space Mono`;ctx.fillStyle=p.color;ctx.textAlign='center';
+      ctx.fillText(p.char,p.x,p.y);
+    } else {
+      ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
+let last=0;
+function loop(ts){const dt=ts-last;last=ts;update(dt);draw();requestAnimationFrame(loop);}
+
+function startGame(){
+  initAudio();
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('inputBar').style.display='block';
+  gameRunning=true;score=0;lives=3;combo=0;wordCount=0;wpmTotal=0;
+  words=[];particles=[];spawnTimer=0;gameSpeed=1;sessionStart=Date.now();
+  document.getElementById('score').textContent='0 PTS';
+  document.getElementById('lives').textContent='💻💻💻';
+  document.getElementById('wpm').textContent='WPM: 0';
+  document.getElementById('combo').textContent='';
+  inputEl.value='';inputEl.focus();
+  for(let i=0;i<3;i++)setTimeout(spawnWord,i*500);
+  requestAnimationFrame(loop);
+}
+function endGame(){
+  gameRunning=false;
+  document.getElementById('inputBar').style.display='none';
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overlay').querySelector('h1').textContent='SYSTEM CRASH';
+  document.getElementById('fs').textContent=`SCORE: ${score} | WPM: ${wpmTotal}`;
+  document.querySelector('button').textContent='REBOOT';
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
