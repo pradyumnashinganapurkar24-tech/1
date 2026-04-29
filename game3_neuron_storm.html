@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neuron Storm</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:'Trebuchet MS',sans-serif;cursor:none;}
+canvas{display:block;}
+#ui{position:fixed;top:15px;left:50%;transform:translateX(-50%);color:#cc88ff;text-align:center;z-index:10;pointer-events:none;}
+#ui h1{font-size:26px;text-shadow:0 0 20px #cc88ff;letter-spacing:5px;}
+#stats{display:flex;gap:30px;justify-content:center;margin-top:8px;font-size:15px;}
+.stat{color:#aa66ff;}
+#overlay{position:fixed;inset:0;background:radial-gradient(ellipse,#0a0015,#000);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#cc88ff;z-index:20;}
+#overlay h2{font-size:50px;text-shadow:0 0 35px #cc88ff;letter-spacing:7px;margin-bottom:15px;}
+#overlay p{color:#996bcc;font-size:16px;margin:6px;text-align:center;max-width:500px;}
+#startBtn{margin-top:25px;padding:13px 38px;background:transparent;border:2px solid #cc88ff;color:#cc88ff;font-size:19px;cursor:pointer;letter-spacing:4px;transition:all 0.3s;}
+#startBtn:hover{background:#cc88ff;color:#000;}
+#hint{position:fixed;bottom:15px;left:50%;transform:translateX(-50%);color:#664499;font-size:13px;}
+</style>
+</head>
+<body>
+<div id="ui"><h1>⚡ NEURON STORM</h1><div id="stats"><span class="stat" id="scoreEl">SYNAPSES: 0</span><span class="stat" id="waveEl">WAVE: 1</span><span class="stat" id="hpEl">INTEGRITY: ████████</span></div></div>
+<div id="hint">MOUSE to aim · CLICK/HOLD to fire · Destroy rogue neurons · Don't let them reach your core</div>
+<div id="overlay">
+  <h2>⚡ NEURON STORM</h2>
+  <p>The neural network has gone rogue. You are the last defensive synapse.</p>
+  <p>Fire electrical impulses to destroy enemy neurons before they reach your core!</p>
+  <button id="startBtn" onclick="startGame()">IGNITE SYNAPSE</button>
+</div>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W=canvas.width=window.innerWidth,H=canvas.height=window.innerHeight;
+let score=0,wave=1,hp=8,gameRunning=false,frame=0;
+let player,enemies,bullets,particles,connections,powerups;
+let mouseX=W/2,mouseY=H/2,shooting=false;
+let shootCooldown=0,audioCtx;
+let neurons=[]; // background decoration
+
+function initAudio(){audioCtx=new(window.AudioContext||window.webkitAudioContext)();playBGM();}
+function playBGM(){
+  const notes=[110,130,146,110,98,110,123,110];
+  const t=0.4;
+  notes.forEach((f,i)=>{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain(),d=audioCtx.createBiquadFilter();
+    o.connect(d);d.connect(g);g.connect(audioCtx.destination);
+    d.type='bandpass';d.frequency.value=f*2;
+    o.type='sawtooth';o.frequency.value=f;
+    g.gain.setValueAtTime(0,audioCtx.currentTime+i*t);
+    g.gain.linearRampToValueAtTime(0.03,audioCtx.currentTime+i*t+0.05);
+    g.gain.linearRampToValueAtTime(0,audioCtx.currentTime+i*t+t*0.8);
+    o.start(audioCtx.currentTime+i*t);o.stop(audioCtx.currentTime+i*t+t);
+  });
+  setTimeout(playBGM,notes.length*t*1000+200);
+}
+function playShoot(){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.connect(g);g.connect(audioCtx.destination);
+  o.type='square';o.frequency.setValueAtTime(1000,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(200,audioCtx.currentTime+0.08);
+  g.gain.setValueAtTime(0.05,audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0,audioCtx.currentTime+0.1);
+  o.start();o.stop(audioCtx.currentTime+0.1);
+}
+function playExplosion(){
+  if(!audioCtx)return;
+  const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.3,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
+  const src=audioCtx.createBufferSource(),g=audioCtx.createGain();
+  src.connect(g);g.connect(audioCtx.destination);
+  src.buffer=buf;g.gain.value=0.15;src.start();
+}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  gameRunning=true;score=0;wave=1;hp=8;frame=0;shootCooldown=0;
+  player={x:W/2,y:H/2,r:22};
+  enemies=[];bullets=[];particles=[];powerups=[];
+  // Background neural net
+  neurons=[];connections=[];
+  for(let i=0;i<30;i++) neurons.push({x:Math.random()*W,y:Math.random()*H,r:4+Math.random()*6,pulse:Math.random()*Math.PI*2,speed:Math.random()*0.03+0.01});
+  for(let i=0;i<neurons.length;i++) for(let j=i+1;j<neurons.length;j++) if(Math.sqrt((neurons[i].x-neurons[j].x)**2+(neurons[i].y-neurons[j].y)**2)<120) connections.push([i,j]);
+  spawnWave();
+  initAudio();
+  loop();
+}
+
+function spawnWave(){
+  const count=5+wave*2;
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const dist=Math.max(W,H)*0.7;
+    const type=Math.random()<0.2&&wave>2?'big':Math.random()<0.3&&wave>1?'fast':'normal';
+    enemies.push({
+      x:W/2+Math.cos(angle)*dist, y:H/2+Math.sin(angle)*dist,
+      r:type==='big'?25:type==='fast'?12:18,
+      speed:type==='fast'?2.5:type==='big'?0.8:1.2+wave*0.1,
+      hp:type==='big'?4:1, maxHp:type==='big'?4:1,
+      pulse:Math.random()*Math.PI*2,
+      type, color:type==='big'?'#ff4400':type==='fast'?'#00ffaa':'#cc44ff',
+      connections:[]
+    });
+  }
+}
+
+canvas.addEventListener('mousemove',e=>{mouseX=e.clientX;mouseY=e.clientY;});
+canvas.addEventListener('mousedown',e=>{shooting=true;});
+canvas.addEventListener('mouseup',e=>{shooting=false;});
+canvas.addEventListener('click',e=>{if(gameRunning)fireAtMouse();});
+
+function fireAtMouse(){
+  if(shootCooldown>0)return;
+  const dx=mouseX-player.x,dy=mouseY-player.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  bullets.push({x:player.x,y:player.y,vx:dx/dist*14,vy:dy/dist*14,r:5,life:60});
+  shootCooldown=8;playShoot();
+  particles.push({x:player.x,y:player.y,vx:dx/dist*3,vy:dy/dist*3,life:10,c:'#cc88ff',r:8});
+}
+
+function loop(){if(!gameRunning)return;update();draw();frame++;requestAnimationFrame(loop);}
+
+function update(){
+  if(shooting&&shootCooldown<=0) fireAtMouse();
+  if(shootCooldown>0) shootCooldown--;
+
+  // BG neurons
+  for(const n of neurons){n.pulse+=n.speed;}
+
+  // Enemies
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    e.pulse+=0.04;
+    const dx=player.x-e.x,dy=player.y-e.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    e.x+=dx/dist*e.speed; e.y+=dy/dist*e.speed;
+    // Hit player
+    if(dist<e.r+player.r){
+      hp--;e.hp=0;
+      for(let j=0;j<25;j++) particles.push({x:player.x,y:player.y,vx:(Math.random()-0.5)*10,vy:(Math.random()-0.5)*10,life:30,c:'#ff4400',r:4});
+      if(hp<=0){gameOver();return;}
+    }
+    if(e.hp<=0){
+      score+=e.type==='big'?300:e.type==='fast'?150:100;
+      for(let j=0;j<15;j++) particles.push({x:e.x,y:e.y,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8,life:35,c:e.color,r:3});
+      if(Math.random()<0.12) powerups.push({x:e.x,y:e.y,r:10,type:'heal',pulse:0});
+      enemies.splice(i,1);playExplosion();
+    }
+  }
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    for(let j=enemies.length-1;j>=0;j--){
+      const e=enemies[j];
+      if(Math.sqrt((b.x-e.x)**2+(b.y-e.y)**2)<b.r+e.r){
+        e.hp--;bullets.splice(i,1);
+        for(let k=0;k<8;k++) particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,life:20,c:'#ffff00',r:2});
+        break;
+      }
+    }
+    if(b.life<=0||b.x<0||b.x>W||b.y<0||b.y>H) bullets.splice(i,1);
+  }
+
+  // Powerups
+  for(let i=powerups.length-1;i>=0;i--){
+    const p=powerups[i];p.pulse+=0.1;
+    if(Math.sqrt((p.x-player.x)**2+(p.y-player.y)**2)<p.r+player.r){
+      hp=Math.min(8,hp+2);powerups.splice(i,1);
+      for(let j=0;j<15;j++) particles.push({x:p.x,y:p.y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5,life:25,c:'#00ff88',r:3});
+    }
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.9;p.vy*=0.9;p.life--;if(p.life<=0)particles.splice(i,1);}
+
+  // Wave clear
+  if(enemies.length===0){wave++;spawnWave();score+=wave*100;}
+
+  document.getElementById('scoreEl').textContent='SYNAPSES: '+score;
+  document.getElementById('waveEl').textContent='WAVE: '+wave;
+  const hpBar='█'.repeat(hp)+'░'.repeat(8-hp);
+  document.getElementById('hpEl').textContent='INTEGRITY: '+hpBar;
+}
+
+function gameOver(){
+  gameRunning=false;
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`<h2>⚡ SHUTDOWN</h2><p>Neural network corruption: critical</p><p style="font-size:24px;margin:20px;color:#cc88ff">SCORE: ${score}</p><button id="startBtn" onclick="location.reload()" style="margin-top:25px;padding:13px 38px;background:transparent;border:2px solid #cc88ff;color:#cc88ff;font-size:19px;cursor:pointer;letter-spacing:4px;">REBOOT</button>`;
+  ov.style.display='flex';
+}
+
+function draw(){
+  ctx.fillStyle='#060010';ctx.fillRect(0,0,W,H);
+  // Background neural net
+  ctx.globalAlpha=0.15;
+  for(const [a,b] of connections){
+    const na=neurons[a],nb=neurons[b];
+    const signal=(Math.sin(frame*0.02+na.pulse)*0.5+0.5);
+    ctx.strokeStyle=`rgb(${Math.floor(100+signal*100)},${Math.floor(50+signal*50)},${Math.floor(200+signal*55)})`;
+    ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(na.x,na.y);ctx.lineTo(nb.x,nb.y);ctx.stroke();
+  }
+  for(const n of neurons){
+    ctx.fillStyle=`rgba(150,80,255,${0.3+Math.sin(n.pulse)*0.2})`;
+    ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Powerups
+  for(const p of powerups){
+    ctx.shadowColor='#00ff88';ctx.shadowBlur=15;
+    ctx.fillStyle=`rgba(0,255,136,${0.6+Math.sin(p.pulse)*0.3})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='12px Trebuchet MS';ctx.textAlign='center';ctx.fillText('+',p.x,p.y+4);
+    ctx.textAlign='left';ctx.shadowBlur=0;
+  }
+
+  // Bullets
+  for(const b of bullets){
+    ctx.shadowColor='#ffff88';ctx.shadowBlur=12;
+    const g=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r*2);
+    g.addColorStop(0,'#ffffff');g.addColorStop(0.5,'#ffff00');g.addColorStop(1,'rgba(255,200,0,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(b.x,b.y,b.r*2,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  // Enemies
+  for(const e of enemies){
+    ctx.save();ctx.translate(e.x,e.y);
+    const pulse=Math.sin(e.pulse)*3;
+    ctx.shadowColor=e.color;ctx.shadowBlur=20;
+    ctx.strokeStyle=e.color;ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(0,0,e.r+pulse,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=e.color+'55';ctx.fill();
+    // Nucleus
+    ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(0,0,e.r*0.4,0,Math.PI*2);ctx.fill();
+    // HP
+    if(e.maxHp>1){
+      ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(-e.r,-e.r-12,e.r*2,6);
+      ctx.fillStyle='#ff4400';ctx.fillRect(-e.r,-e.r-12,e.r*2*(e.hp/e.maxHp),6);
+    }
+    ctx.shadowBlur=0;ctx.restore();
+  }
+
+  // Player
+  ctx.save();ctx.translate(player.x,player.y);
+  ctx.shadowColor='#cc88ff';ctx.shadowBlur=30;
+  // Outer ring
+  ctx.strokeStyle='rgba(200,136,255,0.4)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(0,0,player.r+10+Math.sin(frame*0.05)*4,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='rgba(200,136,255,0.8)';ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(0,0,player.r,0,Math.PI*2);ctx.stroke();
+  const pg=ctx.createRadialGradient(0,0,0,0,0,player.r);
+  pg.addColorStop(0,'rgba(255,255,255,0.9)');pg.addColorStop(0.5,'rgba(200,136,255,0.7)');pg.addColorStop(1,'rgba(100,0,200,0)');
+  ctx.fillStyle=pg;ctx.beginPath();ctx.arc(0,0,player.r,0,Math.PI*2);ctx.fill();
+  // Aim line
+  const adx=mouseX-player.x,ady=mouseY-player.y;
+  const adist=Math.sqrt(adx*adx+ady*ady);
+  ctx.strokeStyle='rgba(200,136,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([5,10]);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(adx/adist*60,ady/adist*60);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.shadowBlur=0;ctx.restore();
+
+  // Particles
+  for(const p of particles){
+    const a=p.life/35;ctx.fillStyle=p.c;ctx.globalAlpha=a;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r||3,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Cursor
+  ctx.strokeStyle='rgba(200,136,255,0.7)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(mouseX,mouseY,12,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='rgba(200,136,255,0.4)';
+  ctx.beginPath();ctx.moveTo(mouseX-18,mouseY);ctx.lineTo(mouseX+18,mouseY);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mouseX,mouseY-18);ctx.lineTo(mouseX,mouseY+18);ctx.stroke();
+}
+window.addEventListener('resize',()=>{canvas.width=W=window.innerWidth;canvas.height=H=window.innerHeight;});
+</script>
+</body>
+</html>
