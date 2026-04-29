@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gravity Weaver</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+canvas { display: block; }
+#ui { position: fixed; top: 20px; left: 20px; color: #00ffcc; z-index: 10; }
+#ui h1 { font-size: 28px; text-shadow: 0 0 20px #00ffcc; letter-spacing: 4px; }
+#score { font-size: 20px; margin-top: 8px; }
+#level { font-size: 16px; color: #ff6699; }
+#instructions { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: #aaa; font-size: 13px; text-align: center; }
+#overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #00ffcc; z-index: 20; }
+#overlay h2 { font-size: 48px; text-shadow: 0 0 30px #00ffcc; letter-spacing: 6px; margin-bottom: 20px; }
+#overlay p { font-size: 18px; color: #ccc; margin: 8px; }
+#startBtn { margin-top: 30px; padding: 14px 40px; background: transparent; border: 2px solid #00ffcc; color: #00ffcc; font-size: 20px; cursor: pointer; letter-spacing: 3px; transition: all 0.3s; }
+#startBtn:hover { background: #00ffcc; color: #000; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <h1>⚛ GRAVITY WEAVER</h1>
+  <div id="score">SCORE: 0</div>
+  <div id="level">LEVEL: 1</div>
+</div>
+<div id="instructions">ARROW KEYS / WASD to move · SPACE to flip gravity · Collect all orbs to advance</div>
+<div id="overlay">
+  <h2>⚛ GRAVITY WEAVER</h2>
+  <p>Bend gravity. Collect orbs. Survive the void.</p>
+  <p>SPACE = Flip Gravity | WASD/Arrows = Move</p>
+  <button id="startBtn" onclick="startGame()">ENTER THE VOID</button>
+</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Audio
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function initAudio() {
+  audioCtx = new AudioCtx();
+  playBGM();
+}
+function playBGM() {
+  function note(freq, start, dur, type='sine') {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, audioCtx.currentTime + start);
+    g.gain.linearRampToValueAtTime(0.04, audioCtx.currentTime + start + 0.05);
+    g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + start + dur);
+    o.start(audioCtx.currentTime + start);
+    o.stop(audioCtx.currentTime + start + dur + 0.1);
+  }
+  const melody = [220,261,294,349,392,349,294,261,220,196,220,261];
+  const t = 0.5;
+  for(let i=0;i<melody.length;i++) { note(melody[i], i*t, t*0.8); note(melody[i]/2, i*t, t*0.8, 'triangle'); }
+  setTimeout(playBGM, melody.length * t * 1000);
+}
+function playFlip() {
+  if(!audioCtx) return;
+  const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.setValueAtTime(200, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime+0.2);
+  g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime+0.3);
+  o.start(); o.stop(audioCtx.currentTime+0.3);
+}
+function playCollect() {
+  if(!audioCtx) return;
+  const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type='square'; o.frequency.setValueAtTime(600, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime+0.1);
+  g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime+0.2);
+  o.start(); o.stop(audioCtx.currentTime+0.2);
+}
+
+// Game state
+let score=0, level=1, gameRunning=false;
+let gravDir = 1; // 1=down, -1=up
+let gravFlipCooldown = 0;
+let player, platforms, orbs, particles, stars;
+
+function initLevel() {
+  gravDir = 1;
+  player = { x: 100, y: 300, w: 30, h: 30, vx: 0, vy: 0, onGround: false, trail: [] };
+  platforms = generatePlatforms();
+  orbs = generateOrbs();
+  particles = [];
+}
+
+function generatePlatforms() {
+  const p = [];
+  p.push({ x: 0, y: canvas.height - 50, w: canvas.width, h: 50, color: '#005577' });
+  p.push({ x: 0, y: 0, w: canvas.width, h: 20, color: '#005577' });
+  for(let i=0;i<6+level*2;i++) {
+    p.push({
+      x: Math.random()*(canvas.width-200)+100,
+      y: 100 + Math.random()*(canvas.height-250),
+      w: 80+Math.random()*150, h: 20,
+      color: `hsl(${180+i*20},70%,40%)`,
+      moving: Math.random()>0.5, dir: 1, speed: 0.5+Math.random()*1.5
+    });
+  }
+  return p;
+}
+
+function generateOrbs() {
+  const o = [];
+  for(let i=0;i<5+level;i++) {
+    o.push({ x: 150+Math.random()*(canvas.width-300), y: 80+Math.random()*(canvas.height-200), r: 14, collected: false, pulse: Math.random()*Math.PI*2 });
+  }
+  return o;
+}
+
+function initStars() {
+  stars = [];
+  for(let i=0;i<200;i++) stars.push({ x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*2, speed:Math.random()*0.5+0.1 });
+}
+
+const keys = {};
+document.addEventListener('keydown', e=>{ keys[e.code]=true; if(e.code==='Space') flipGravity(); if(gameRunning) e.preventDefault(); });
+document.addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+function flipGravity() {
+  if(!gameRunning || gravFlipCooldown>0) return;
+  gravDir *= -1;
+  gravFlipCooldown = 30;
+  playFlip();
+  for(let i=0;i<20;i++) particles.push({ x:player.x+15, y:player.y+15, vx:(Math.random()-0.5)*8, vy:(Math.random()-0.5)*8, life:40, color:'#00ffcc' });
+}
+
+function startGame() {
+  document.getElementById('overlay').style.display = 'none';
+  gameRunning = true;
+  score = 0; level = 1;
+  initLevel();
+  initStars();
+  initAudio();
+  loop();
+}
+
+function loop() {
+  if(!gameRunning) return;
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function update() {
+  if(gravFlipCooldown>0) gravFlipCooldown--;
+  // Move platforms
+  for(const p of platforms) {
+    if(p.moving) {
+      p.x += p.dir * p.speed;
+      if(p.x < 0 || p.x+p.w > canvas.width) p.dir *= -1;
+    }
+  }
+  // Player input
+  if(keys['ArrowLeft']||keys['KeyA']) player.vx -= 0.8;
+  if(keys['ArrowRight']||keys['KeyD']) player.vx += 0.8;
+  player.vx *= 0.85;
+  player.vy += 0.5 * gravDir;
+  player.vy = Math.max(-15, Math.min(15, player.vy));
+  player.x += player.vx;
+  player.y += player.vy;
+  // Wall wrap
+  if(player.x < 0) player.x = canvas.width;
+  if(player.x > canvas.width) player.x = 0;
+  // Platform collision
+  player.onGround = false;
+  for(const p of platforms) {
+    if(player.x+player.w > p.x && player.x < p.x+p.w) {
+      if(gravDir===1 && player.y+player.h > p.y && player.y+player.h < p.y+p.h+15 && player.vy>=0) {
+        player.y = p.y-player.h; player.vy=0; player.onGround=true;
+      }
+      if(gravDir===-1 && player.y < p.y+p.h && player.y > p.y-15 && player.vy<=0) {
+        player.y = p.y+p.h; player.vy=0; player.onGround=true;
+      }
+    }
+  }
+  // Orbs
+  for(const o of orbs) {
+    if(!o.collected) {
+      o.pulse += 0.08;
+      const dx = player.x+15-o.x, dy = player.y+15-o.y;
+      if(Math.sqrt(dx*dx+dy*dy) < o.r+15) {
+        o.collected=true; score+=100; playCollect();
+        for(let i=0;i<15;i++) particles.push({ x:o.x, y:o.y, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*6, life:35, color:'#ffdd00' });
+      }
+    }
+  }
+  // Trail
+  player.trail.push({x:player.x+15, y:player.y+15});
+  if(player.trail.length>12) player.trail.shift();
+  // Particles
+  for(let i=particles.length-1;i>=0;i--) {
+    const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.life--;
+    if(p.life<=0) particles.splice(i,1);
+  }
+  // Die
+  if(player.y>canvas.height+50||player.y<-80) { player.y=300; player.vy=0; score=Math.max(0,score-50); }
+  // Level up
+  if(orbs.every(o=>o.collected)) { level++; initLevel(); score+=500; document.getElementById('level').textContent='LEVEL: '+level; }
+  document.getElementById('score').textContent='SCORE: '+score;
+  // Stars parallax
+  for(const s of stars) { s.x -= s.speed; if(s.x<0) s.x=canvas.width; }
+}
+
+function draw() {
+  ctx.fillStyle='#020812';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  // Stars
+  for(const s of stars) { ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fillStyle='#aaccff'; ctx.fill(); }
+  // Grid lines
+  ctx.strokeStyle='rgba(0,255,200,0.04)';
+  for(let x=0;x<canvas.width;x+=60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+  for(let y=0;y<canvas.height;y+=60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+  // Platforms
+  for(const p of platforms) {
+    const g = ctx.createLinearGradient(p.x,p.y,p.x,p.y+p.h);
+    g.addColorStop(0,p.color); g.addColorStop(1,'#001133');
+    ctx.fillStyle=g; ctx.fillRect(p.x,p.y,p.w,p.h);
+    ctx.strokeStyle='rgba(0,255,200,0.5)'; ctx.lineWidth=1; ctx.strokeRect(p.x,p.y,p.w,p.h);
+    // Glow edge
+    ctx.shadowColor='#00ffcc'; ctx.shadowBlur=8;
+    ctx.strokeStyle='rgba(0,255,200,0.8)'; ctx.strokeRect(p.x,p.y,p.w,2); ctx.shadowBlur=0;
+  }
+  // Orbs
+  for(const o of orbs) {
+    if(o.collected) continue;
+    const pulse = Math.sin(o.pulse)*4;
+    ctx.shadowColor='#ffdd00'; ctx.shadowBlur=20;
+    const g=ctx.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r+pulse);
+    g.addColorStop(0,'#ffffcc'); g.addColorStop(0.5,'#ffdd00'); g.addColorStop(1,'rgba(255,180,0,0)');
+    ctx.beginPath(); ctx.arc(o.x,o.y,o.r+pulse,0,Math.PI*2);
+    ctx.fillStyle=g; ctx.fill(); ctx.shadowBlur=0;
+    // Orbit rings
+    ctx.save(); ctx.translate(o.x,o.y); ctx.rotate(o.pulse*2);
+    ctx.strokeStyle='rgba(255,220,0,0.4)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.ellipse(0,0,o.r+8,o.r+3,0,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+  // Trail
+  for(let i=0;i<player.trail.length;i++) {
+    const t=player.trail[i]; const a=i/player.trail.length;
+    ctx.beginPath(); ctx.arc(t.x,t.y,5*a,0,Math.PI*2);
+    ctx.fillStyle=`rgba(0,255,200,${a*0.6})`; ctx.fill();
+  }
+  // Player
+  ctx.save(); ctx.translate(player.x+15,player.y+15);
+  if(gravDir===-1) ctx.scale(1,-1);
+  ctx.shadowColor='#00ffcc'; ctx.shadowBlur=20;
+  const pg=ctx.createLinearGradient(-15,-15,15,15);
+  pg.addColorStop(0,'#00ffee'); pg.addColorStop(1,'#0066ff');
+  ctx.fillStyle=pg;
+  ctx.beginPath(); ctx.moveTo(0,-15); ctx.lineTo(12,10); ctx.lineTo(-12,10); ctx.closePath(); ctx.fill();
+  // Eyes
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(-4,-2,4,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(-3,-2,2,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0; ctx.restore();
+  // Particles
+  for(const p of particles) {
+    const a=p.life/40; ctx.beginPath(); ctx.arc(p.x,p.y,4*a,0,Math.PI*2);
+    ctx.fillStyle=p.color; ctx.globalAlpha=a; ctx.fill(); ctx.globalAlpha=1;
+  }
+  // Gravity indicator
+  ctx.fillStyle='rgba(0,255,200,0.15)'; ctx.fillRect(10,canvas.height-40,200,30);
+  ctx.fillStyle='#00ffcc'; ctx.font='14px Courier New';
+  ctx.fillText(`GRAVITY: ${gravDir===1?'▼ DOWN':'▲ UP'} ${gravFlipCooldown>0?'(cooling...':''}`, 18, canvas.height-20);
+}
+window.addEventListener('resize',()=>{ canvas.width=window.innerWidth; canvas.height=window.innerHeight; });
+</script>
+</body>
+</html>
