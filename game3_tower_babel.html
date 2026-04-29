@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tower of Babel</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a0a00; font-family:'Georgia',serif; overflow:hidden; }
+  canvas { display:block; }
+  #hud {
+    position:fixed; top:0; left:0; right:0; z-index:10; pointer-events:none;
+    padding:16px 24px; display:flex; justify-content:space-between; align-items:flex-start;
+  }
+  .panel {
+    background:rgba(255,200,100,0.08); border:1px solid rgba(255,200,100,0.2);
+    padding:10px 20px; border-radius:4px; backdrop-filter:blur(5px);
+  }
+  .label { font-size:9px; letter-spacing:3px; color:#fbbf24; opacity:0.7; }
+  .val { font-size:30px; color:#fbbf24; text-shadow:0 0 20px #f59e0b; line-height:1; }
+  #overlay {
+    position:fixed; inset:0; background:radial-gradient(ellipse at center, #2d1500 0%, #0a0500 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100;
+  }
+  #overlay h1 {
+    font-size:64px; color:#fbbf24; letter-spacing:8px;
+    text-shadow:0 0 40px #f59e0b, 0 0 80px #b45309; margin-bottom:4px;
+  }
+  #overlay p { color:#fcd34d; letter-spacing:3px; font-size:13px; margin-bottom:8px; }
+  #overlay .tip { color:#92400e; font-size:11px; letter-spacing:2px; margin-bottom:40px; }
+  #startBtn {
+    padding:14px 52px; background:linear-gradient(135deg,#d97706,#92400e);
+    color:#fff; border:none; font-size:15px; letter-spacing:4px; cursor:pointer;
+    font-family:inherit; border-radius:2px;
+    box-shadow:0 4px 20px rgba(217,119,6,0.4);
+  }
+  #startBtn:hover { background:linear-gradient(135deg,#f59e0b,#d97706); transform:scale(1.02); }
+  #audioBtn {
+    position:fixed; top:16px; right:16px; z-index:200; background:rgba(251,191,36,0.1);
+    border:1px solid #fbbf24; color:#fbbf24; padding:6px 14px; font-size:10px;
+    letter-spacing:2px; cursor:pointer; font-family:inherit;
+  }
+  #info {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    color:rgba(251,191,36,0.4); font-size:11px; letter-spacing:2px; text-align:center;
+    pointer-events:none; z-index:10;
+  }
+  #gameover {
+    position:fixed; inset:0; background:rgba(10,5,0,0.96);
+    display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200;
+  }
+  #gameover h2 { font-size:52px; color:#ef4444; letter-spacing:6px; margin-bottom:10px; text-shadow:0 0 30px #dc2626; }
+  #gameover .score { color:#fbbf24; font-size:24px; margin-bottom:8px; }
+  #gameover .height { color:#f59e0b; font-size:16px; margin-bottom:30px; }
+  #restartBtn {
+    padding:12px 40px; background:linear-gradient(135deg,#d97706,#92400e);
+    color:#fff; border:none; font-size:13px; letter-spacing:3px; cursor:pointer; font-family:inherit;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div class="panel"><div class="label">HEIGHT</div><div class="val" id="height">0</div></div>
+  <div class="panel"><div class="label">SCORE</div><div class="val" id="score">0</div></div>
+  <div class="panel"><div class="label">COMBO</div><div class="val" id="combo">x1</div></div>
+</div>
+<div id="info">CLICK OR SPACE TO DROP THE BLOCK</div>
+<button id="audioBtn">♪ ON</button>
+<div id="overlay">
+  <h1>BABEL</h1>
+  <p>TOWER OF BABEL</p>
+  <div class="tip">STACK BLOCKS · BUILD HIGH · REACH THE HEAVENS</div>
+  <button id="startBtn" onclick="startGame()">BUILD →</button>
+</div>
+<div id="gameover">
+  <h2>FALLEN!</h2>
+  <div class="score" id="final-score">Score: 0</div>
+  <div class="height" id="final-height">Height: 0 blocks</div>
+  <button id="restartBtn" onclick="restartGame()">REBUILD</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Audio
+let audioCtx, audioOn = false;
+function initAudio() { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function playTone(freq, dur, vol=0.2, type='triangle') {
+  if (!audioCtx || !audioOn) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+let bs3 = 0;
+const melody3 = [220,247,261,294,329,349,392,440];
+setInterval(() => {
+  if (!audioOn || !audioCtx) return;
+  playTone(melody3[bs3 % melody3.length], 0.5, 0.05, 'triangle');
+  if (bs3 % 2 === 0) playTone(110, 0.4, 0.04, 'sine');
+  bs3++;
+}, 500);
+document.getElementById('audioBtn').onclick = function() {
+  if (!audioCtx) initAudio();
+  audioOn = !audioOn;
+  this.textContent = audioOn ? '♪ ON' : '♪ OFF';
+};
+
+// THREE
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(devicePixelRatio);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x100500);
+scene.fog = new THREE.FogExp2(0x1a0800, 0.02);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 200);
+camera.position.set(0, 8, 20);
+camera.lookAt(0, 5, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x402010, 3));
+const sun = new THREE.DirectionalLight(0xffd580, 2);
+sun.position.set(5, 20, 5);
+sun.castShadow = true;
+sun.shadow.camera.near = 0.1;
+sun.shadow.camera.far = 100;
+sun.shadow.camera.left = -20;
+sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 50;
+sun.shadow.camera.bottom = -5;
+sun.shadow.mapSize.width = 2048;
+sun.shadow.mapSize.height = 2048;
+scene.add(sun);
+const fire1 = new THREE.PointLight(0xff6600, 3, 20); fire1.position.set(-8, 2, 0); scene.add(fire1);
+const fire2 = new THREE.PointLight(0xff4400, 3, 20); fire2.position.set(8, 2, 0); scene.add(fire2);
+
+// Ground
+const groundGeo = new THREE.BoxGeometry(30, 1, 30);
+const groundMat = new THREE.MeshLambertMaterial({ color: 0x5c2d00 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.position.y = -0.5;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Background pillars
+for (let i = -3; i <= 3; i += 2) {
+  const pg = new THREE.CylinderGeometry(0.3, 0.4, 8, 8);
+  const pm = new THREE.MeshLambertMaterial({ color: 0x4a1f00 });
+  const p = new THREE.Mesh(pg, pm);
+  p.position.set(i * 4, 4, -8); p.castShadow = true;
+  scene.add(p);
+}
+
+// Particle system (dust)
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(600);
+for (let i = 0; i < 600; i += 3) {
+  dustPos[i] = (Math.random()-0.5)*40;
+  dustPos[i+1] = Math.random()*30;
+  dustPos[i+2] = (Math.random()-0.5)*20;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xffd580, size: 0.08, transparent: true, opacity: 0.4 })));
+
+// Game
+let gameActive = false;
+let blocks = [], fallingBlocks = [];
+let score = 0, towerHeight = 0, comboCount = 1;
+let movingBlock = null, moveDir = 1, moveSpeed = 3.0;
+
+const BLOCK_H = 0.8;
+const colors = [0xff6b35, 0xffd93d, 0xff8c42, 0xf4d03f, 0xff5733, 0xffa726, 0xffcc02, 0xff7043];
+
+function createBlock(x, y, w) {
+  const geo = new THREE.BoxGeometry(w, BLOCK_H, 2);
+  const mat = new THREE.MeshPhongMaterial({
+    color: colors[Math.floor(Math.random()*colors.length)],
+    shininess: 60, specular: 0x444444
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, 0);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = { w, x };
+  scene.add(mesh);
+  return mesh;
+}
+
+function spawnMovingBlock() {
+  const topBlock = blocks[blocks.length - 1];
+  const w = topBlock ? topBlock.userData.w : 4;
+  const y = topBlock ? topBlock.position.y + BLOCK_H : BLOCK_H/2;
+  const startX = -8;
+  movingBlock = createBlock(startX, y, w);
+  moveDir = 1;
+  moveSpeed = Math.min(3 + towerHeight * 0.15, 8);
+}
+
+function dropBlock() {
+  if (!movingBlock || !gameActive) return;
+  const topBlock = blocks[blocks.length - 1];
+  if (!topBlock) {
+    // First block
+    movingBlock.userData.x = movingBlock.position.x;
+    blocks.push(movingBlock);
+    movingBlock = null;
+    towerHeight = 1;
+    score += 100;
+    playTone(440, 0.3, 0.2, 'triangle');
+    updateHUD();
+    spawnMovingBlock();
+    return;
+  }
+
+  const prevX = topBlock.userData.x;
+  const prevW = topBlock.userData.w;
+  const curX = movingBlock.position.x;
+  const curW = movingBlock.userData.w;
+
+  const overlapLeft = Math.max(prevX - prevW/2, curX - curW/2);
+  const overlapRight = Math.min(prevX + prevW/2, curX + curW/2);
+  const overlapW = overlapRight - overlapLeft;
+
+  if (overlapW <= 0.1) {
+    // Miss! Tower falls
+    playTone(60, 1, 0.3, 'sawtooth');
+    animateFall(movingBlock);
+    endGame();
+    return;
+  }
+
+  // Perfect?
+  const isPerfect = Math.abs(curX - prevX) < 0.15;
+  if (isPerfect) {
+    comboCount++;
+    score += 200 * comboCount;
+    playTone(880, 0.2, 0.2, 'sine');
+    playTone(1100, 0.3, 0.15, 'triangle');
+    showPerfect();
+  } else {
+    comboCount = 1;
+    score += Math.round(overlapW * 50);
+    playTone(330 + towerHeight * 15, 0.2, 0.2, 'triangle');
+  }
+
+  // Cut block
+  const newX = (overlapLeft + overlapRight) / 2;
+  movingBlock.userData.w = overlapW;
+  movingBlock.userData.x = newX;
+  scene.remove(movingBlock);
+  const newBlock = createBlock(newX, movingBlock.position.y, overlapW);
+  newBlock.userData.x = newX;
+  blocks.push(newBlock);
+
+  // Drop the leftover
+  const cutLeft = curX - curW/2;
+  const cutRight = curX + curW/2;
+  if (curX - curW/2 < overlapLeft) {
+    const cutW = overlapLeft - cutLeft;
+    const cut = createBlock(cutLeft + cutW/2, movingBlock.position.y, cutW);
+    animateFall(cut);
+  }
+  if (cutRight > overlapRight) {
+    const cutW = cutRight - overlapRight;
+    const cut = createBlock(overlapRight + cutW/2, movingBlock.position.y, cutW);
+    animateFall(cut);
+  }
+
+  movingBlock = null;
+  towerHeight++;
+  updateHUD();
+  moveCameraUp();
+  spawnMovingBlock();
+}
+
+function animateFall(mesh) {
+  fallingBlocks.push({ mesh, vy: 0 });
+  setTimeout(() => { scene.remove(mesh); fallingBlocks = fallingBlocks.filter(f => f.mesh !== mesh); }, 2000);
+}
+
+let perfectMsg = null;
+function showPerfect() {
+  // Flash the camera
+  renderer.setClearColor(0xffd700, 0.3);
+  setTimeout(() => renderer.setClearColor(0x100500, 0), 100);
+}
+
+function moveCameraUp() {
+  const targetY = Math.max(8, towerHeight * BLOCK_H + 8);
+  const targetLookY = Math.max(5, towerHeight * BLOCK_H - 2);
+  cameraTargetY = targetY;
+  cameraLookY = targetLookY;
+}
+
+let cameraTargetY = 8, cameraLookY = 5;
+
+function updateHUD() {
+  document.getElementById('height').textContent = towerHeight;
+  document.getElementById('score').textContent = score;
+  document.getElementById('combo').textContent = `x${comboCount}`;
+}
+
+function endGame() {
+  gameActive = false;
+  setTimeout(() => {
+    document.getElementById('final-score').textContent = `Score: ${score}`;
+    document.getElementById('final-height').textContent = `Height: ${towerHeight} blocks`;
+    document.getElementById('gameover').style.display = 'flex';
+  }, 600);
+}
+
+function clearBlocks() {
+  blocks.forEach(b => scene.remove(b));
+  fallingBlocks.forEach(f => scene.remove(f.mesh));
+  if (movingBlock) { scene.remove(movingBlock); movingBlock = null; }
+  blocks = []; fallingBlocks = []; towerHeight = 0; score = 0; comboCount = 1;
+  cameraTargetY = 8; cameraLookY = 5;
+}
+
+function startGame() {
+  document.getElementById('overlay').style.display = 'none';
+  clearBlocks();
+  updateHUD();
+  gameActive = true;
+  // Base platform
+  const base = createBlock(0, -0.4, 5);
+  base.userData.x = 0;
+  blocks.push(base);
+  spawnMovingBlock();
+  if (!audioCtx) initAudio();
+}
+
+function restartGame() {
+  document.getElementById('gameover').style.display = 'none';
+  clearBlocks();
+  updateHUD();
+  gameActive = true;
+  const base = createBlock(0, -0.4, 5);
+  base.userData.x = 0;
+  blocks.push(base);
+  spawnMovingBlock();
+}
+
+window.addEventListener('keydown', e => { if (e.code === 'Space') dropBlock(); });
+canvas.addEventListener('click', dropBlock);
+
+let t3 = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t3 += 0.016;
+
+  // Camera
+  camera.position.y += (cameraTargetY - camera.position.y) * 0.05;
+  const lookY = cameraLookY;
+  camera.lookAt(0, lookY, 0);
+
+  // Moving block
+  if (movingBlock && gameActive) {
+    movingBlock.position.x += moveDir * moveSpeed * 0.016;
+    const limit = 7 + movingBlock.userData.w / 2;
+    if (movingBlock.position.x > limit) moveDir = -1;
+    if (movingBlock.position.x < -limit) moveDir = 1;
+    movingBlock.rotation.y += 0.02;
+  }
+
+  // Falling blocks
+  fallingBlocks.forEach(f => {
+    f.vy += 0.3;
+    f.mesh.position.y -= f.vy * 0.016;
+    f.mesh.rotation.z += 0.05;
+    f.mesh.rotation.x += 0.03;
+  });
+
+  // Fire flicker
+  fire1.intensity = 2.5 + Math.sin(t3 * 7) * 0.8;
+  fire2.intensity = 2.5 + Math.cos(t3 * 6) * 0.8;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
