@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INK BRUSH DOJO</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;700&family=Zen+Brush+2&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#f5f0e8;overflow:hidden;font-family:'Noto Serif JP',serif;cursor:none;}
+  canvas{display:block;}
+  #score{position:fixed;top:18px;left:50%;transform:translateX(-50%);color:#1a0a00;font-size:22px;letter-spacing:4px;text-shadow:1px 1px 0 rgba(0,0,0,0.2);}
+  #instruction{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:#3a2010;font-size:16px;text-align:center;letter-spacing:2px;opacity:0.8;}
+  #timer{position:fixed;top:18px;right:25px;color:#880000;font-size:20px;}
+  #level{position:fixed;top:18px;left:25px;color:#3a2010;font-size:16px;letter-spacing:2px;}
+  #overlay{position:fixed;inset:0;background:rgba(245,240,232,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+  h1{color:#1a0a00;font-size:46px;margin-bottom:12px;letter-spacing:8px;text-shadow:2px 2px 0 rgba(0,0,0,0.1);}
+  p{color:#3a2010;font-size:14px;line-height:2.4;text-align:center;margin-bottom:30px;max-width:400px;}
+  button{background:transparent;border:2px solid #1a0a00;color:#1a0a00;font-family:'Noto Serif JP',serif;font-size:17px;padding:12px 40px;cursor:pointer;letter-spacing:4px;transition:all 0.3s;}
+  button:hover{background:rgba(26,10,0,0.08);}
+  #fs{color:#880000;font-size:28px;margin:15px 0;letter-spacing:3px;}
+  #clear{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);background:rgba(26,10,0,0.1);border:1px solid #1a0a00;color:#1a0a00;font-family:'Noto Serif JP',serif;font-size:14px;padding:8px 25px;cursor:pointer;letter-spacing:3px;display:none;}
+  #clear:hover{background:rgba(26,10,0,0.2);}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="score">0 点</div>
+<div id="timer">⏳ 10</div>
+<div id="level">段位 1</div>
+<div id="instruction">Draw the kanji with your brush</div>
+<button id="clear" onclick="clearCanvas()">消す (CLEAR)</button>
+<div id="overlay">
+  <h1>墨 INK DOJO</h1>
+  <p>Master the art of calligraphy!<br>Draw the shown kanji/symbol on the scroll.<br>Hold and drag to paint with ink.<br>Release to submit your brushwork!<br>Accuracy earns you 段位 (rank)!</p>
+  <button onclick="startGame()">Begin Training 開始</button>
+  <div id="fs"></div>
+</div>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W=canvas.width=window.innerWidth,H=canvas.height=window.innerHeight;
+window.onresize=()=>{W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;redrawTarget();};
+
+let audioCtx;
+function initAudio(){audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
+function brushSound(){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.05,audioCtx.sampleRate);
+  const data=buf.getChannelData(0);
+  for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*0.3;
+  const src=audioCtx.createBufferSource();src.buffer=buf;
+  src.connect(g);g.connect(audioCtx.destination);
+  g.gain.setValueAtTime(0.15,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.05);
+  src.start();
+}
+function chime(f){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.connect(g);g.connect(audioCtx.destination);
+  o.type='sine';o.frequency.value=f;
+  g.gain.setValueAtTime(0.2,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+1.5);
+  o.start();o.stop(audioCtx.currentTime+1.6);
+}
+function ambientBell(){
+  if(!audioCtx||!gameRunning)return;
+  chime([196,247,311,370,415][Math.floor(Math.random()*5)]);
+  setTimeout(ambientBell,3000+Math.random()*4000);
+}
+
+// Ink canvas (separate layer)
+let inkCanvas=document.createElement('canvas');
+let inkCtx;
+function initInk(){
+  inkCanvas.width=W;inkCanvas.height=H;inkCtx=inkCanvas.getContext('2d');
+}
+
+let gameRunning=false,score=0,level=1,timeLeft=10,timerInterval;
+let drawing=false,lastX=0,lastY=0,pressure=0;
+let currentTarget=0;
+let strokeCount=0,submitting=false;
+let particles=[];
+
+// Kanji targets - drawn programmatically
+const TARGETS=[
+  {name:'山 (Mountain)',hint:'Three peaks',
+   draw:(ctx,cx,cy,s)=>{
+     ctx.lineWidth=s*0.06;ctx.lineCap='round';ctx.lineJoin='round';
+     ctx.beginPath();
+     ctx.moveTo(cx-s*0.5,cy+s*0.35);ctx.lineTo(cx-s*0.5,cy+s*0.35);
+     ctx.lineTo(cx,cy-s*0.4);ctx.lineTo(cx+s*0.5,cy+s*0.35);
+     ctx.moveTo(cx-s*0.85,cy+s*0.35);ctx.lineTo(cx+s*0.85,cy+s*0.35);
+     ctx.moveTo(cx-s*0.3,cy+s*0.35);ctx.lineTo(cx-s*0.3,cy-s*0.05);
+     ctx.moveTo(cx+s*0.3,cy+s*0.35);ctx.lineTo(cx+s*0.3,cy-s*0.05);
+     ctx.stroke();
+   }},
+  {name:'川 (River)',hint:'Three vertical strokes',
+   draw:(ctx,cx,cy,s)=>{
+     ctx.lineWidth=s*0.07;ctx.lineCap='round';
+     [[-0.3,0],[0,0.05],[0.3,0]].forEach(([ox,tilt])=>{
+       ctx.beginPath();
+       ctx.moveTo(cx+ox*s,cy-s*0.4);
+       ctx.quadraticCurveTo(cx+ox*s+tilt*s,cy,cx+ox*s-tilt*s*0.5,cy+s*0.4);
+       ctx.stroke();
+     });
+   }},
+  {name:'日 (Sun)',hint:'Rectangle with middle line',
+   draw:(ctx,cx,cy,s)=>{
+     ctx.lineWidth=s*0.07;ctx.lineCap='round';ctx.lineJoin='round';
+     ctx.beginPath();ctx.rect(cx-s*0.3,cy-s*0.4,s*0.6,s*0.8);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx-s*0.3,cy);ctx.lineTo(cx+s*0.3,cy);ctx.stroke();
+   }},
+  {name:'火 (Fire)',hint:'Central stroke with wings',
+   draw:(ctx,cx,cy,s)=>{
+     ctx.lineWidth=s*0.06;ctx.lineCap='round';ctx.lineJoin='round';
+     ctx.beginPath();ctx.moveTo(cx,cy-s*0.4);ctx.quadraticCurveTo(cx+s*0.05,cy,cx,cy+s*0.4);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx-s*0.4,cy+s*0.1);ctx.quadraticCurveTo(cx-s*0.2,cy-s*0.05,cx-s*0.05,cy+s*0.4);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx+s*0.4,cy+s*0.1);ctx.quadraticCurveTo(cx+s*0.2,cy-s*0.05,cx+s*0.05,cy+s*0.4);ctx.stroke();
+   }},
+  {name:'木 (Tree)',hint:'Cross with roots',
+   draw:(ctx,cx,cy,s)=>{
+     ctx.lineWidth=s*0.07;ctx.lineCap='round';ctx.lineJoin='round';
+     ctx.beginPath();ctx.moveTo(cx,cy-s*0.45);ctx.lineTo(cx,cy+s*0.45);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx-s*0.45,cy-s*0.05);ctx.lineTo(cx+s*0.45,cy-s*0.05);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx,cy+s*0.15);ctx.lineTo(cx-s*0.35,cy+s*0.45);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx,cy+s*0.15);ctx.lineTo(cx+s*0.35,cy+s*0.45);ctx.stroke();
+   }},
+  {name:'人 (Person)',hint:'Two diagonal strokes',
+   draw:(ctx,cx,cy,s)=>{
+     ctx.lineWidth=s*0.07;ctx.lineCap='round';ctx.lineJoin='round';
+     ctx.beginPath();ctx.moveTo(cx,cy-s*0.4);ctx.quadraticCurveTo(cx-s*0.05,cy-s*0.05,cx-s*0.4,cy+s*0.4);ctx.stroke();
+     ctx.beginPath();ctx.moveTo(cx+s*0.05,cy-s*0.1);ctx.lineTo(cx+s*0.4,cy+s*0.4);ctx.stroke();
+   }},
+];
+
+let mx=0,my=0;
+function getPos(e){
+  if(e.touches)return{x:e.touches[0].clientX,y:e.touches[0].clientY};
+  return{x:e.clientX,y:e.clientY};
+}
+
+canvas.addEventListener('mousedown',e=>{
+  if(!gameRunning||submitting)return;
+  drawing=true;const p=getPos(e);lastX=p.x;lastY=p.y;pressure=0;
+  brushSound();
+});
+canvas.addEventListener('mousemove',e=>{
+  mx=e.clientX;my=e.clientY;
+  if(!drawing||!gameRunning)return;
+  const p=getPos(e);
+  pressure=Math.min(1,pressure+0.05);
+  const bw=4+pressure*12;
+  inkCtx.beginPath();inkCtx.moveTo(lastX,lastY);
+  inkCtx.quadraticCurveTo((lastX+p.x)/2,(lastY+p.y)/2,p.x,p.y);
+  inkCtx.strokeStyle=`rgba(5,2,0,${0.7+pressure*0.3})`;
+  inkCtx.lineWidth=bw;inkCtx.lineCap='round';inkCtx.lineJoin='round';inkCtx.stroke();
+  // Ink variation
+  if(Math.random()<0.3){
+    inkCtx.beginPath();inkCtx.arc(p.x+(Math.random()-0.5)*bw,p.y+(Math.random()-0.5)*bw,1+Math.random()*2,0,Math.PI*2);
+    inkCtx.fillStyle='rgba(5,2,0,0.3)';inkCtx.fill();
+  }
+  lastX=p.x;lastY=p.y;strokeCount++;
+  if(strokeCount%5===0)brushSound();
+});
+canvas.addEventListener('mouseup',()=>{if(drawing){drawing=false;pressure=0;if(strokeCount>20)autoSubmit();}});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const p=getPos(e);canvas.dispatchEvent(new MouseEvent('mousedown',{clientX:p.x,clientY:p.y}));},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();const p=getPos(e);canvas.dispatchEvent(new MouseEvent('mousemove',{clientX:p.x,clientY:p.y}));},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();canvas.dispatchEvent(new MouseEvent('mouseup'));},{passive:false});
+
+function autoSubmit(){
+  if(submitting)return;
+  submitting=true;
+  setTimeout(()=>{
+    evaluateDrawing();
+    submitting=false;
+  },500);
+}
+
+function evaluateDrawing(){
+  // Sample the ink canvas and target region and compare
+  const cx=W/2,cy=H*0.42,ts=Math.min(W,H)*0.22;
+  // Count ink pixels in target region
+  const region=inkCtx.getImageData(cx-ts*1.2,cy-ts*0.8,ts*2.4,ts*1.6);
+  let inkPixels=0;
+  for(let i=3;i<region.data.length;i+=4){if(region.data[i]>50)inkPixels++;}
+  const totalPixels=(ts*2.4)*(ts*1.6);
+  const coverage=inkPixels/totalPixels;
+
+  // Target coverage estimate (reasonable kanji fills ~15-35%)
+  const score_pct=Math.min(1,coverage/0.15);
+  const accuracy=Math.round(score_pct*100);
+  const pts=accuracy*level*2;
+  score+=pts;
+  document.getElementById('score').textContent=`${score} 点`;
+
+  // Flash result
+  const result=accuracy>70?'完璧! PERFECT!':accuracy>40?'よい GOOD!':'練習 PRACTICE!';
+  const col=accuracy>70?'#004400':accuracy>40?'#334400':'#440000';
+  particles.push({x:W/2,y:H/2,text:result,life:2,vx:0,vy:-0.5,color:col,big:true});
+  chime(accuracy>70?880:accuracy>40?660:440);
+  clearCanvas(false);
+  nextTarget();
+}
+
+function clearCanvas(full=true){
+  if(inkCtx)inkCtx.clearRect(0,0,W,H);
+  strokeCount=0;
+}
+
+function nextTarget(){
+  currentTarget=(currentTarget+1)%TARGETS.length;
+  if(currentTarget===0)level++;
+  timeLeft=8+level*2;
+  clearInterval(timerInterval);
+  timerInterval=setInterval(()=>{
+    if(!gameRunning)return;
+    timeLeft--;document.getElementById('timer').textContent=`⏳ ${timeLeft}`;
+    if(timeLeft<=0){
+      clearCanvas();evaluateDrawing();
+    }
+  },1000);
+  document.getElementById('instruction').textContent=`Draw: ${TARGETS[currentTarget].name} — ${TARGETS[currentTarget].hint}`;
+  document.getElementById('level').textContent=`段位 ${level}`;
+}
+
+function redrawTarget(){
+  // Target is drawn on main canvas each frame
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // Paper texture background
+  const bg=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H));
+  bg.addColorStop(0,'#f8f3e8');bg.addColorStop(1,'#ede5d0');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+  // Paper grain
+  for(let i=0;i<200;i++){
+    const px=(Math.sin(i*73)*0.5+0.5)*W,py=(Math.cos(i*97)*0.5+0.5)*H;
+    ctx.fillStyle='rgba(180,150,100,0.06)';
+    ctx.fillRect(px,py,2,Math.random()*5+2);
+  }
+
+  // Scroll border
+  ctx.strokeStyle='rgba(100,60,20,0.3)';ctx.lineWidth=3;
+  ctx.strokeRect(30,30,W-60,H-60);
+  ctx.strokeStyle='rgba(100,60,20,0.15)';ctx.lineWidth=1;
+  ctx.strokeRect(40,40,W-80,H-80);
+
+  // Target kanji (faint guide)
+  if(gameRunning){
+    const tgt=TARGETS[currentTarget];
+    const cx=W/2,cy=H*0.42,ts=Math.min(W,H)*0.22;
+    ctx.save();ctx.globalAlpha=0.12;ctx.strokeStyle='#334400';
+    tgt.draw(ctx,cx,cy,ts);ctx.restore();
+
+    // Reference in corner
+    ctx.save();ctx.globalAlpha=0.5;ctx.strokeStyle='#1a0a00';
+    tgt.draw(ctx,W-90,H-80,50);ctx.restore();
+    ctx.fillStyle='rgba(26,10,0,0.5)';ctx.font='12px Noto Serif JP';ctx.textAlign='center';
+    ctx.fillText('参考 (GUIDE)',W-90,H-28);
+  }
+
+  // Ink layer
+  if(inkCanvas)ctx.drawImage(inkCanvas,0,0);
+
+  // Cursor brush
+  ctx.save();
+  ctx.translate(mx,my);
+  const pressed=drawing;
+  if(pressed){ctx.rotate(0.3);}
+  // Brush handle
+  ctx.fillStyle='#4a2808';ctx.fillRect(-3,-30,6,30);
+  // Bristles
+  ctx.fillStyle='rgba(5,2,0,0.8)';
+  for(let i=0;i<5;i++){
+    ctx.fillRect(-2+i,-5+i*2,2,8-i*1.5);
+  }
+  ctx.restore();
+
+  // Particles (result text)
+  particles.forEach(p=>{
+    ctx.save();ctx.globalAlpha=Math.min(1,p.life*0.5);
+    ctx.fillStyle=p.color;
+    if(p.big){ctx.font=`bold ${p.life>1.5?36:28}px 'Noto Serif JP'`;ctx.textAlign='center';ctx.fillText(p.text,p.x,p.y);}
+    ctx.restore();
+    p.y+=p.vy;p.life-=0.015;
+  });
+  particles=particles.filter(p=>p.life>0);
+
+  // Water mark
+  ctx.fillStyle='rgba(100,60,20,0.06)';ctx.font=`bold ${H*0.8}px serif`;
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('道',W/2,H/2);
+}
+
+let last=0;
+function loop(ts){const dt=ts-last;last=ts;draw();requestAnimationFrame(loop);}
+
+function startGame(){
+  initAudio();initInk();
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('clear').style.display='block';
+  gameRunning=true;score=0;level=1;currentTarget=0;
+  document.getElementById('score').textContent='0 点';
+  document.getElementById('instruction').textContent=`Draw: ${TARGETS[0].name}`;
+  timeLeft=12;
+  timerInterval=setInterval(()=>{
+    if(!gameRunning)return;
+    timeLeft--;document.getElementById('timer').textContent=`⏳ ${timeLeft}`;
+    if(timeLeft<=0){clearCanvas();evaluateDrawing();}
+  },1000);
+  ambientBell();
+  // End after 10 rounds
+  setTimeout(()=>{if(gameRunning)endGame();},120000);
+  requestAnimationFrame(loop);
+}
+function endGame(){
+  clearInterval(timerInterval);gameRunning=false;
+  document.getElementById('clear').style.display='none';
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overlay').querySelector('h1').textContent='修行完了 COMPLETE!';
+  document.getElementById('fs').textContent=`${score} 点 — 段位 ${level}`;
+  document.querySelector('button').textContent='再訓練 Train Again';
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
