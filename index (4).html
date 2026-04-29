@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRISM BREAK — Neon Breakout</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Audiowide&family=Roboto+Mono:wght@300;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#000;overflow:hidden;font-family:'Audiowide',sans-serif;}
+  canvas{display:block;}
+  #ui{position:fixed;top:0;left:0;width:100%;padding:16px 24px;display:flex;justify-content:space-between;z-index:10;pointer-events:none;}
+  .stat{color:#fff;font-family:'Roboto Mono',monospace;}
+  .stat span{font-size:10px;letter-spacing:3px;color:rgba(255,255,255,0.3);display:block;}
+  .stat strong{font-size:24px;text-shadow:0 0 15px currentColor;}
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,0.96);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+  h1{font-size:clamp(40px,7vw,90px);letter-spacing:8px;margin-bottom:12px;background:linear-gradient(90deg,#ff006e,#fb5607,#ffbe0b,#06d6a0,#118ab2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .sub{color:rgba(255,255,255,0.3);font-family:'Roboto Mono',monospace;font-size:12px;letter-spacing:3px;margin-bottom:40px;}
+  .btn{background:transparent;border:2px solid rgba(255,255,255,0.2);color:#fff;padding:14px 44px;font-family:'Audiowide',sans-serif;font-size:14px;letter-spacing:3px;cursor:pointer;transition:all 0.3s;}
+  .btn:hover{border-color:#ff006e;color:#ff006e;box-shadow:0 0 30px rgba(255,0,110,0.3);}
+  #audioBtn{position:fixed;bottom:20px;right:20px;background:transparent;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.4);padding:6px 14px;font-size:10px;cursor:pointer;z-index:30;letter-spacing:2px;}
+  #lives{display:flex;gap:6px;align-items:center;}
+  .ball-icon{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,#888);}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="stat"><span>SCORE</span><strong id="scoreEl" style="color:#ff006e">000000</strong></div>
+  <div class="stat" style="text-align:center;"><span>LEVEL</span><strong id="lvlEl" style="color:#ffbe0b">1</strong></div>
+  <div class="stat" style="text-align:right;"><span>BALLS</span><div id="lives"></div></div>
+</div>
+<canvas id="c"></canvas>
+<div id="overlay">
+  <h1>PRISM BREAK</h1>
+  <div class="sub">MOVE MOUSE · CLICK TO LAUNCH · BREAK ALL BRICKS</div>
+  <button class="btn" onclick="startGame()">START GAME</button>
+</div>
+<button id="audioBtn" onclick="toggleAudio()">♫ BGM</button>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+const W=canvas.width,H=canvas.height;
+
+// Audio
+let actx,mGain,bgmOn=false,bgmTimer;
+function initAudio(){if(actx)return;actx=new(window.AudioContext||window.webkitAudioContext)();mGain=actx.createGain();mGain.gain.value=0.35;mGain.connect(actx.destination);}
+function toggleAudio(){initAudio();if(!bgmOn){bgmOn=true;bgmLoop();document.getElementById('audioBtn').textContent='♫ ON';}else{bgmOn=false;clearTimeout(bgmTimer);document.getElementById('audioBtn').textContent='♫ BGM';}}
+function bgmLoop(){
+  if(!bgmOn||!actx)return;
+  const scale=[261,293,329,349,392,440,493,523];
+  const pat=[0,4,7,4,5,7,4,0,2,5,4,2,7,5,4,0];
+  let t=actx.currentTime;
+  pat.forEach((n,i)=>{
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.type=i%2===0?'square':'triangle';o.frequency.value=scale[n%scale.length]*(i%4===0?0.5:1);
+    o.connect(g);g.connect(mGain);
+    g.gain.setValueAtTime(0,t+i*0.14);g.gain.linearRampToValueAtTime(0.2,t+i*0.14+0.04);g.gain.linearRampToValueAtTime(0,t+i*0.14+0.13);
+    o.start(t+i*0.14);o.stop(t+i*0.14+0.14);
+  });
+  bgmTimer=setTimeout(bgmLoop,pat.length*140);
+}
+function beep(f,t='sine',d=0.08){if(!actx)return;const o=actx.createOscillator(),g=actx.createGain();o.type=t;o.frequency.value=f;o.connect(g);g.connect(mGain);g.gain.setValueAtTime(0.5,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.01,actx.currentTime+d);o.start();o.stop(actx.currentTime+d);}
+
+// Game vars
+let paddle,balls=[],bricks=[],particles=[],score=0,lives=3,level=1,gameRunning=false,waitingLaunch=true,frame=0,mx=W/2;
+const BRICK_COLORS=['#ff006e','#fb5607','#ffbe0b','#06d6a0','#118ab2','#9b5de5','#f15bb5'];
+const PW=120,PH=14,PR=7;
+
+function makeBricks(lv){
+  bricks=[];
+  const cols=Math.min(8+lv,16),rows=Math.min(3+lv,8);
+  const bw=(W*0.75)/cols,bh=22,startX=W*0.125,startY=80;
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    const hp=lv>5&&r<2?2:1;
+    bricks.push({x:startX+c*bw,y:startY+r*(bh+4),w:bw-4,h:bh,hp,maxHp:hp,color:BRICK_COLORS[(r+c)%BRICK_COLORS.length],alive:true,shimmer:Math.random()*Math.PI*2});
+  }
+}
+
+function startGame(){
+  score=0;lives=3;level=1;gameRunning=true;waitingLaunch=true;
+  paddle={x:W/2,y:H-60,w:PW,h:PH};
+  balls=[{x:W/2,y:H-80,vx:3,vy:-5,r:8,attached:true}];
+  makeBricks(level);updateLives();
+  document.getElementById('scoreEl').textContent='000000';
+  document.getElementById('lvlEl').textContent=level;
+  document.getElementById('overlay').style.display='none';
+  initAudio();bgmOn=true;bgmLoop();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener('mousemove',e=>{mx=e.clientX;});
+canvas.addEventListener('click',()=>{if(waitingLaunch&&gameRunning){waitingLaunch=false;balls.forEach(b=>{if(b.attached){b.attached=false;b.vx=3+(Math.random()-0.5)*2;b.vy=-6;}});}});
+
+function updateLives(){
+  const el=document.getElementById('lives');el.innerHTML='';
+  for(let i=0;i<lives;i++) el.innerHTML+='<div class="ball-icon"></div>';
+}
+
+let lastTime=0;
+function loop(ts){
+  if(!gameRunning)return;
+  frame++;
+  // Trail effect
+  ctx.fillStyle='rgba(0,0,0,0.18)';ctx.fillRect(0,0,W,H);
+
+  // BG grid
+  ctx.strokeStyle='rgba(255,255,255,0.02)';ctx.lineWidth=1;
+  for(let i=0;i<W;i+=60){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
+  for(let j=0;j<H;j+=60){ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}
+
+  // Paddle
+  paddle.x=mx;
+  paddle.x=Math.max(paddle.w/2,Math.min(W-paddle.w/2,paddle.x));
+  drawPaddle();
+
+  // Bricks
+  bricks.forEach(b=>{
+    if(!b.alive)return;
+    b.shimmer+=0.04;
+    drawBrick(b);
+  });
+
+  // Balls
+  balls=balls.filter(b=>{
+    if(b.attached){b.x=paddle.x;b.y=paddle.y-paddle.h/2-b.r;}
+    else{b.x+=b.vx;b.y+=b.vy;}
+    // Wall bounce
+    if(b.x-b.r<0){b.x=b.r;b.vx=Math.abs(b.vx);beep(440);}
+    if(b.x+b.r>W){b.x=W-b.r;b.vx=-Math.abs(b.vx);beep(440);}
+    if(b.y-b.r<0){b.y=b.r;b.vy=Math.abs(b.vy);beep(440);}
+    // Paddle
+    if(!b.attached&&b.y+b.r>paddle.y-paddle.h/2&&b.y-b.r<paddle.y+paddle.h/2&&b.x>paddle.x-paddle.w/2&&b.x<paddle.x+paddle.w/2&&b.vy>0){
+      b.vy=-Math.abs(b.vy)*1.01;
+      b.vx+=(b.x-paddle.x)/paddle.w*4;
+      b.vx=Math.max(-10,Math.min(10,b.vx));
+      beep(330,'square',0.06);
+      spawnPaddleHit(b.x,paddle.y);
+    }
+    // Brick collision
+    for(let i=bricks.length-1;i>=0;i--){
+      const br=bricks[i];
+      if(!br.alive)continue;
+      if(b.x>br.x&&b.x<br.x+br.w&&b.y>br.y&&b.y<br.y+br.h){
+        br.hp--;
+        if(br.hp<=0){br.alive=false;score+=10*level;spawnBrickParticles(br);beep(660,'triangle',0.1);}
+        else beep(440,'sine',0.05);
+        // Determine bounce axis
+        const overlapL=b.x-(br.x),overlapR=(br.x+br.w)-b.x,overlapT=b.y-(br.y),overlapB=(br.y+br.h)-b.y;
+        const minX=Math.min(overlapL,overlapR),minY=Math.min(overlapT,overlapB);
+        if(minX<minY) b.vx=-b.vx; else b.vy=-b.vy;
+        document.getElementById('scoreEl').textContent=String(score).padStart(6,'0');
+        break;
+      }
+    }
+    // Lost
+    if(b.y>H+50) return false;
+    drawBall(b);
+    return true;
+  });
+
+  if(balls.length===0){lives--;updateLives();if(lives<=0){endGame();return;}else{balls=[{x:paddle.x,y:paddle.y-30,vx:3,vy:-5,r:8,attached:true}];waitingLaunch=true;}}
+
+  // Level clear
+  if(bricks.every(b=>!b.alive)){level++;document.getElementById('lvlEl').textContent=level;makeBricks(level);balls=[{x:paddle.x,y:paddle.y-30,vx:3,vy:-5,r:8,attached:true}];waitingLaunch=true;beep(880,'sine',0.3);}
+
+  // Particles
+  particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life-=0.04;if(p.life<=0)return false;ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.shadowBlur=6;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.globalAlpha=1;return true;});
+
+  // Launch hint
+  if(waitingLaunch){ctx.fillStyle='rgba(255,255,255,0.2)';ctx.font='13px Roboto Mono';ctx.textAlign='center';ctx.fillText('CLICK TO LAUNCH',W/2,H/2);}
+
+  requestAnimationFrame(loop);
+}
+
+function drawPaddle(){
+  const {x,y,w,h}=paddle;
+  // 3D depth
+  ctx.fillStyle='rgba(255,255,255,0.1)';
+  ctx.beginPath();ctx.roundRect(x-w/2+6,y-h/2+6,w,h,PR);ctx.fill();
+  // Glow
+  const grad=ctx.createLinearGradient(x-w/2,y,x+w/2,y);
+  grad.addColorStop(0,'#9b5de5');grad.addColorStop(0.5,'#f15bb5');grad.addColorStop(1,'#ff006e');
+  ctx.shadowBlur=20;ctx.shadowColor='#f15bb5';
+  ctx.fillStyle=grad;ctx.beginPath();ctx.roundRect(x-w/2,y-h/2,w,h,PR);ctx.fill();
+  ctx.shadowBlur=0;
+  // Shine
+  ctx.fillStyle='rgba(255,255,255,0.3)';ctx.beginPath();ctx.roundRect(x-w/2+6,y-h/2+2,w-12,4,2);ctx.fill();
+}
+
+function drawBall(b){
+  // Glow
+  const grad=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r*2.5);
+  grad.addColorStop(0,'rgba(255,255,255,0.4)');grad.addColorStop(1,'transparent');
+  ctx.fillStyle=grad;ctx.beginPath();ctx.arc(b.x,b.y,b.r*2.5,0,Math.PI*2);ctx.fill();
+  // Ball 3D
+  const sg=ctx.createRadialGradient(b.x-b.r*0.3,b.y-b.r*0.3,b.r*0.1,b.x,b.y,b.r);
+  sg.addColorStop(0,'#ffffff');sg.addColorStop(0.4,'#ccccff');sg.addColorStop(1,'#8888ff');
+  ctx.shadowBlur=15;ctx.shadowColor='#aaaaff';
+  ctx.fillStyle=sg;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+  ctx.shadowBlur=0;
+}
+
+function drawBrick(b){
+  const depth=5;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.roundRect(b.x+depth,b.y+depth,b.w,b.h,3);ctx.fill();
+  // Right face
+  ctx.fillStyle=b.color+'44';ctx.beginPath();ctx.moveTo(b.x+b.w,b.y);ctx.lineTo(b.x+b.w+depth,b.y-depth);ctx.lineTo(b.x+b.w+depth,b.y+b.h-depth);ctx.lineTo(b.x+b.w,b.y+b.h);ctx.closePath();ctx.fill();
+  // Top face
+  ctx.fillStyle=b.color+'33';ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x+depth,b.y-depth);ctx.lineTo(b.x+b.w+depth,b.y-depth);ctx.lineTo(b.x+b.w,b.y);ctx.closePath();ctx.fill();
+  // Front face with shimmer
+  const shimX=b.x+b.w*((Math.sin(b.shimmer)*0.5+0.5));
+  const grad=ctx.createLinearGradient(b.x,b.y,shimX,b.y+b.h);
+  grad.addColorStop(0,b.color);grad.addColorStop(0.5,b.color+'dd');grad.addColorStop(1,b.color);
+  ctx.shadowBlur=b.hp>1?12:6;ctx.shadowColor=b.color;
+  ctx.fillStyle=grad;ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,3);ctx.fill();ctx.stroke();
+  // Cracked if hp<maxHp
+  if(b.hp<b.maxHp){ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x+b.w*0.3,b.y+2);ctx.lineTo(b.x+b.w*0.6,b.y+b.h-2);ctx.stroke();}
+  ctx.shadowBlur=0;
+}
+
+function spawnBrickParticles(b){
+  for(let i=0;i<10;i++) particles.push({x:b.x+b.w/2,y:b.y+b.h/2,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*6-2,life:1,color:b.color,r:2+Math.random()*3});
+}
+function spawnPaddleHit(x,y){
+  for(let i=0;i<5;i++) particles.push({x,y,vx:(Math.random()-0.5)*5,vy:-Math.random()*4,life:0.8,color:'#f15bb5',r:3});
+}
+
+function endGame(){
+  gameRunning=false;bgmOn=false;clearTimeout(bgmTimer);
+  document.getElementById('overlay').innerHTML=`<h1 style="font-size:clamp(40px,6vw,80px);letter-spacing:8px;background:linear-gradient(90deg,#ff006e,#ffbe0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px;">GAME OVER</h1><div style="color:rgba(255,255,255,0.3);font-family:'Roboto Mono',monospace;font-size:13px;letter-spacing:3px;margin-bottom:40px;">SCORE: ${String(score).padStart(6,'0')}</div><button class="btn" onclick="startGame()">PLAY AGAIN</button>`;
+  document.getElementById('overlay').style.display='flex';
+}
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth;canvas.height=window.innerHeight;});
+</script>
+</body>
+</html>
