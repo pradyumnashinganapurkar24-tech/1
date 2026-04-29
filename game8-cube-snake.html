@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cube Snake — 3D Snake</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#050510;overflow:hidden;font-family:'Press Start 2P',monospace;}
+#canvas{display:block;}
+#hud{position:fixed;top:16px;left:0;width:100%;display:flex;justify-content:space-between;padding:0 24px;pointer-events:none;}
+.hb{background:rgba(0,0,0,0.7);border:1px solid rgba(0,255,128,0.3);border-radius:6px;padding:8px 16px;color:#00ff80;font-size:9px;letter-spacing:1px;}
+.hb span{display:block;font-size:16px;font-weight:700;color:#fff;margin-top:3px;}
+#overlay{position:fixed;inset:0;background:rgba(5,5,16,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+#overlay h1{font-size:clamp(24px,5vw,48px);color:#00ff80;text-shadow:0 0 20px #00ff80;letter-spacing:4px;margin-bottom:8px;}
+#overlay p{color:#444;font-size:9px;letter-spacing:2px;margin-bottom:32px;text-align:center;line-height:1.8;}
+#startBtn{padding:12px 36px;font-family:'Press Start 2P',monospace;font-size:11px;letter-spacing:2px;background:transparent;border:1px solid #00ff80;color:#00ff80;border-radius:4px;cursor:pointer;transition:all 0.3s;}
+#startBtn:hover{background:rgba(0,255,128,0.1);box-shadow:0 0 20px rgba(0,255,128,0.4);}
+#hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.25);font-size:8px;letter-spacing:2px;}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div class="hb">SCORE<span id="scoreVal">0</span></div>
+  <div class="hb" style="text-align:center;">LENGTH<span id="lenVal">3</span></div>
+  <div class="hb" style="text-align:right;">BEST<span id="bestVal">0</span></div>
+</div>
+<div id="hint">ARROW KEYS / WASD — STEER &nbsp;|&nbsp; Q/E — ROTATE VIEW</div>
+<div id="overlay">
+  <h1>CUBE SNAKE</h1>
+  <p>EAT THE FOOD<br>DON'T HIT YOURSELF<br>OR THE WALLS</p>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const AC=new(window.AudioContext||window.webkitAudioContext)();
+function tone(f,d,v=0.15,t='square'){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,AC.currentTime);g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+d);o.start();o.stop(AC.currentTime+d);}
+function eatSnd(){tone(440,0.08);tone(660,0.1,'sine',0.1,0.06);}
+function dieSnd(){[330,220,110].forEach((f,i)=>setTimeout(()=>tone(f,0.2,0.3),i*100));}
+let bgmOn=false;
+function startBGM(){if(bgmOn)return;bgmOn=true;const n=[196,0,0,220,0,0,196,0,164,0,0,196,0,0];let i=0;function s(){if(!bgmOn)return;if(n[i%n.length])tone(n[i%n.length],0.18,0.05,'square');i++;setTimeout(s,200);}s();}
+
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('canvas'),antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x050510);scene.fog=new THREE.Fog(0x050510,30,60);
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,100);
+camera.position.set(0,18,18);camera.lookAt(0,0,0);
+
+scene.add(new THREE.AmbientLight(0x112211,2));
+const dl=new THREE.DirectionalLight(0x44ff88,2);dl.position.set(5,10,5);dl.castShadow=true;scene.add(dl);
+
+const GRID=12, CELL=1.2;
+function g2w(v){return(v-GRID/2+0.5)*CELL;}
+
+// Grid floor
+const floorMat=new THREE.MeshPhongMaterial({color:0x0a1a10,shininess:20});
+for(let x=0;x<GRID;x++) for(let z=0;z<GRID;z++){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(CELL-0.05,0.1,CELL-0.05),floorMat);
+  m.position.set(g2w(x),-0.5,g2w(z));m.receiveShadow=true;scene.add(m);
+}
+
+// Walls
+const wallMat=new THREE.MeshPhongMaterial({color:0x002208,emissive:0x001104,shininess:50,transparent:true,opacity:0.4});
+[[GRID/2*CELL,-0.25,0,0.1,2,GRID*CELL],[-(GRID/2)*CELL,-0.25,0,0.1,2,GRID*CELL],[0,-0.25,GRID/2*CELL,GRID*CELL,2,0.1],[0,-0.25,-(GRID/2)*CELL,GRID*CELL,2,0.1]].forEach(([x,y,z,w,h,d])=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w||0.1,h,d||0.1),wallMat);m.position.set(x,y,z);scene.add(m);
+});
+// Wall glow lines
+const glowMat=new THREE.MeshBasicMaterial({color:0x00ff80,transparent:true,opacity:0.5});
+[[GRID/2*CELL,1,0,0.04,0.04,GRID*CELL],[-(GRID/2)*CELL,1,0,0.04,0.04,GRID*CELL],[0,1,GRID/2*CELL,GRID*CELL,0.04,0.04],[0,1,-(GRID/2)*CELL,GRID*CELL,0.04,0.04]].forEach(([x,y,z,w,h,d])=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),glowMat);m.position.set(x,y,z);scene.add(m);
+});
+
+// Snake
+let snake=[],dir={x:1,z:0},nextDir={x:1,z:0};
+const snakeHead=[];
+const snakeMat=new THREE.MeshPhongMaterial({color:0x00ff80,emissive:0x003310,shininess:100});
+const bodyMat=new THREE.MeshPhongMaterial({color:0x00cc66,emissive:0x001a08,shininess:80});
+
+function makeSegment(x,z,isHead){
+  const geo=isHead?new THREE.BoxGeometry(CELL*0.85,CELL*0.85,CELL*0.85):new THREE.BoxGeometry(CELL*0.7,CELL*0.7,CELL*0.7);
+  const m=new THREE.Mesh(geo,isHead?snakeMat:bodyMat);
+  m.position.set(g2w(x),0,g2w(z));m.castShadow=true;scene.add(m);
+  return{mesh:m,x,z};
+}
+
+let foodMesh=null;
+const foodMat=new THREE.MeshBasicMaterial({color:0xff4488});
+function spawnFood(){
+  if(foodMesh)scene.remove(foodMesh);
+  let fx,fz;
+  do{fx=Math.floor(Math.random()*GRID);fz=Math.floor(Math.random()*GRID);}while(snake.some(s=>s.x===fx&&s.z===fz));
+  foodMesh=new THREE.Mesh(new THREE.SphereGeometry(0.35,8,8),foodMat);
+  foodMesh.position.set(g2w(fx),0,g2w(fz));scene.add(foodMesh);
+  foodMesh.userData={x:fx,z:fz};
+}
+
+// Particles
+const particles=[];
+function burst(pos,col=0xff4488){for(let i=0;i<10;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(0.06,4,4),new THREE.MeshBasicMaterial({color:col}));m.position.copy(pos);const v=new THREE.Vector3((Math.random()-0.5)*0.2,(Math.random()+0.3)*0.15,(Math.random()-0.5)*0.2);particles.push({mesh:m,vel:v,life:30});scene.add(m);}}
+
+let score=0,best=0,gameActive=false,moveTimer=0,moveInterval=160,cameraAngle=0;
+
+function initSnake(){
+  snake.forEach(s=>scene.remove(s.mesh));snake=[];
+  snake.push(makeSegment(GRID/2,GRID/2,true));
+  snake.push(makeSegment(GRID/2-1,GRID/2,false));
+  snake.push(makeSegment(GRID/2-2,GRID/2,false));
+  dir={x:1,z:0};nextDir={x:1,z:0};
+}
+
+function moveSnake(){
+  dir={...nextDir};
+  const head=snake[0];
+  const nx=head.x+dir.x,nz=head.z+dir.z;
+  if(nx<0||nx>=GRID||nz<0||nz>=GRID){die();return;}
+  if(snake.some(s=>s.x===nx&&s.z===nz)){die();return;}
+  const newHead=makeSegment(nx,nz,true);
+  snake[0].mesh.geometry=new THREE.BoxGeometry(CELL*0.7,CELL*0.7,CELL*0.7);
+  snake[0].mesh.material=bodyMat;
+  snake.unshift(newHead);
+  if(nx===foodMesh.userData.x&&nz===foodMesh.userData.z){
+    score+=10;best=Math.max(best,score);
+    document.getElementById('scoreVal').textContent=score;
+    document.getElementById('lenVal').textContent=snake.length;
+    document.getElementById('bestVal').textContent=best;
+    burst(foodMesh.position);eatSnd();spawnFood();
+    moveInterval=Math.max(80,moveInterval-3);
+  } else {
+    const tail=snake.pop();scene.remove(tail.mesh);
+  }
+}
+
+function die(){
+  bgmOn=false;dieSnd();burst(snake[0].mesh.position,0x00ff80);
+  if(score>best)best=score;
+  gameActive=false;
+  const ov=document.getElementById('overlay');ov.style.display='flex';
+  ov.querySelector('h1').textContent='DEAD';ov.querySelector('h1').style.color='#ff4444';
+  ov.querySelector('p').textContent='SCORE: '+score+'\nBEST: '+best;ov.querySelector('button').textContent='RETRY';
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.code==='ArrowLeft'||e.code==='KeyA'){if(dir.x!==1)nextDir={x:-1,z:0};}
+  if(e.code==='ArrowRight'||e.code==='KeyD'){if(dir.x!==-1)nextDir={x:1,z:0};}
+  if(e.code==='ArrowUp'||e.code==='KeyW'){if(dir.z!==1)nextDir={x:0,z:-1};}
+  if(e.code==='ArrowDown'||e.code==='KeyS'){if(dir.z!==-1)nextDir={x:0,z:1};}
+  if(e.code==='KeyQ')cameraAngle-=0.1;
+  if(e.code==='KeyE')cameraAngle+=0.1;
+});
+
+function startGame(){
+  if(AC.state==='suspended')AC.resume();
+  document.getElementById('overlay').style.display='none';
+  score=0;moveInterval=160;
+  document.getElementById('scoreVal').textContent=0;
+  document.getElementById('lenVal').textContent=3;
+  initSnake();spawnFood();gameActive=true;startBGM();
+}
+
+const clock=new THREE.Clock();
+let lastMove=0;
+function animate(){
+  requestAnimationFrame(animate);
+  const now=Date.now();
+  if(gameActive&&now-lastMove>moveInterval){moveSnake();lastMove=now;}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.mesh.position.add(p.vel);p.vel.y-=0.01;p.life--;if(p.life<=0){scene.remove(p.mesh);particles.splice(i,1);}}
+
+  // Food pulse
+  if(foodMesh){foodMesh.rotation.y+=0.04;foodMesh.position.y=Math.sin(Date.now()*0.005)*0.15;}
+
+  // Camera orbit
+  const cr=22;
+  camera.position.x=Math.sin(cameraAngle)*cr;camera.position.z=Math.cos(cameraAngle)*cr;
+  camera.position.y=18;camera.lookAt(0,0,0);
+
+  renderer.render(scene,camera);
+}
+animate();
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
