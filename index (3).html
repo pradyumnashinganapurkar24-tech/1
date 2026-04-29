@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTEROID MINER — Deep Space</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#000;overflow:hidden;font-family:'Space Grotesk',sans-serif;}
+  canvas{display:block;}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10;}
+  #topHud{position:absolute;top:0;left:0;right:0;padding:20px;display:flex;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,0.7),transparent);}
+  .hud-item{display:flex;flex-direction:column;gap:4px;}
+  .hud-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;color:rgba(100,220,255,0.4);}
+  .hud-value{font-family:'JetBrains Mono',monospace;font-size:20px;color:#64dcff;text-shadow:0 0 10px #64dcff;}
+  #healthBar{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);width:200px;}
+  .bar-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;color:rgba(255,255,255,0.3);text-align:center;margin-bottom:4px;}
+  .bar-bg{background:rgba(255,255,255,0.1);height:4px;border-radius:2px;}
+  .bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#64dcff,#00ff88);transition:width 0.2s;box-shadow:0 0 10px #64dcff;}
+  #overlay{position:fixed;inset:0;background:rgba(0,0,5,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+  #overlay h1{font-size:clamp(40px,7vw,90px);font-weight:700;color:#64dcff;letter-spacing:6px;text-shadow:0 0 60px rgba(100,220,255,0.5);margin-bottom:8px;}
+  #overlay .tagline{color:rgba(255,255,255,0.3);font-size:13px;letter-spacing:4px;font-family:'JetBrains Mono',monospace;margin-bottom:40px;}
+  .btn{background:rgba(100,220,255,0.08);border:1px solid rgba(100,220,255,0.3);color:#64dcff;padding:14px 44px;font-family:'Space Grotesk',sans-serif;font-size:15px;letter-spacing:3px;cursor:pointer;transition:all 0.3s;font-weight:500;}
+  .btn:hover{background:rgba(100,220,255,0.15);border-color:#64dcff;box-shadow:0 0 30px rgba(100,220,255,0.2);}
+  #audioBtn{position:fixed;bottom:20px;right:20px;z-index:30;background:transparent;border:1px solid rgba(100,220,255,0.2);color:rgba(100,220,255,0.5);padding:6px 12px;font-size:10px;cursor:pointer;letter-spacing:2px;font-family:'JetBrains Mono',monospace;}
+  #minimap{position:absolute;bottom:20px;right:20px;width:120px;height:120px;border:1px solid rgba(100,220,255,0.2);background:rgba(0,0,10,0.5);}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="topHud">
+    <div class="hud-item"><div class="hud-label">ORE</div><div class="hud-value" id="oreEl">0</div></div>
+    <div class="hud-item"><div class="hud-label">FUEL</div><div class="hud-value" id="fuelEl">100</div></div>
+    <div class="hud-item"><div class="hud-label">DEPTH</div><div class="hud-value" id="depthEl">0</div></div>
+    <div class="hud-item"><div class="hud-label">SCORE</div><div class="hud-value" id="scoreEl">0</div></div>
+  </div>
+  <div id="healthBar"><div class="bar-label">HULL INTEGRITY</div><div class="bar-bg"><div class="bar-fill" id="hullBar" style="width:100%"></div></div></div>
+  <canvas id="minimap"></canvas>
+</div>
+<div id="overlay">
+  <h1>ASTEROID MINER</h1>
+  <div class="tagline">MINE ORE · DODGE ASTEROIDS · SURVIVE THE VOID</div>
+  <button class="btn" onclick="startGame()">DEPLOY SHIP</button>
+</div>
+<button id="audioBtn" onclick="toggleAudio()">♫ SPACE BGM</button>
+
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const miniCanvas=document.getElementById('minimap');
+const mCtx=miniCanvas.getContext('2d');
+miniCanvas.width=120;miniCanvas.height=120;
+canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+
+// Audio
+let actx,mGain,bgmOn=false,bgmId;
+function initAudio(){if(actx)return;actx=new(window.AudioContext||window.webkitAudioContext)();mGain=actx.createGain();mGain.gain.value=0.3;mGain.connect(actx.destination);}
+function toggleAudio(){initAudio();if(!bgmOn){bgmOn=true;playBGM();document.getElementById('audioBtn').textContent='♫ ON';}else{bgmOn=false;document.getElementById('audioBtn').textContent='♫ SPACE BGM';}}
+function playBGM(){
+  if(!bgmOn||!actx) return;
+  const drones=[55,73.4,110];
+  const node=actx.createGain();node.gain.value=0;node.connect(mGain);
+  node.gain.linearRampToValueAtTime(1,actx.currentTime+2);
+  drones.forEach(f=>{
+    const o=actx.createOscillator(),g=actx.createGain(),pan=actx.createStereoPanner();
+    o.type='sine';o.frequency.value=f;
+    const lfo=actx.createOscillator();lfo.frequency.value=0.05+Math.random()*0.1;
+    const lg=actx.createGain();lg.gain.value=f*0.02;
+    lfo.connect(lg);lg.connect(o.frequency);
+    g.gain.value=0.15;
+    pan.pan.value=(Math.random()-0.5)*0.8;
+    o.connect(g);g.connect(pan);pan.connect(node);
+    o.start();lfo.start();
+  });
+  // Melody
+  function melody(){
+    if(!bgmOn) return;
+    const notes=[220,246,261,293,329,349];
+    const seq=[0,2,4,2,3,4,2,0,4,3,2,4,0,2,3,4];
+    let t=actx.currentTime;
+    seq.forEach((n,i)=>{
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type='triangle';o.frequency.value=notes[n%notes.length];
+      o.connect(g);g.connect(mGain);
+      g.gain.setValueAtTime(0,t+i*0.25);
+      g.gain.linearRampToValueAtTime(0.12,t+i*0.25+0.05);
+      g.gain.linearRampToValueAtTime(0,t+i*0.25+0.24);
+      o.start(t+i*0.25);o.stop(t+i*0.25+0.25);
+    });
+    bgmId=setTimeout(melody,seq.length*250);
+  }
+  melody();
+}
+function beep(f,d=0.05){if(!actx)return;const o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.value=f;o.connect(g);g.connect(mGain);g.gain.setValueAtTime(0.3,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.01,actx.currentTime+d);o.start();o.stop(actx.currentTime+d);}
+
+// Game
+const W=canvas.width,H=canvas.height;
+let ship,asteroids=[],bullets=[],particles=[],ores=[],stars=[];
+let score=0,ore=0,fuel=100,hull=100,depth=0;
+let keys={},gameRunning=false,frame=0;
+
+for(let i=0;i<300;i++) stars.push({x:Math.random()*W*3-W,y:Math.random()*H*3-H,r:Math.random()*2,b:Math.random()});
+
+function startGame(){
+  ship={x:W/2,y:H/2,vx:0,vy:0,angle:0,thrustOn:false,laserCooldown:0,trail:[]};
+  asteroids=[];ores=[];bullets=[];particles=[];
+  score=0;ore=0;fuel=100;hull=100;depth=0;gameRunning=true;
+  document.getElementById('overlay').style.display='none';
+  for(let i=0;i<15;i++) spawnAsteroid();
+  initAudio();bgmOn=true;playBGM();
+  requestAnimationFrame(loop);
+}
+
+function spawnAsteroid(x,y){
+  const ax=x||ship.x+(Math.random()-0.5)*W*1.5;
+  const ay=y||ship.y+(Math.random()-0.5)*H*1.5;
+  const r=20+Math.random()*60;
+  const pts=[];
+  const n=7+Math.floor(Math.random()*5);
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2;const rad=r*(0.7+Math.random()*0.3);pts.push({x:Math.cos(a)*rad,y:Math.sin(a)*rad});}
+  const type=Math.random()<0.3?'ore':'rock';
+  asteroids.push({x:ax,y:ay,vx:(Math.random()-0.5)*1.5,vy:(Math.random()-0.5)*1.5,r,pts,hp:Math.ceil(r/15),maxHp:Math.ceil(r/15),angle:Math.random()*Math.PI*2,spin:(Math.random()-0.5)*0.02,type,color:type==='ore'?`hsl(${40+Math.random()*20},80%,50%)`:`hsl(${Math.random()*30+200},20%,40%)`});
+}
+
+document.addEventListener('keydown',e=>{keys[e.code]=true;e.preventDefault&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)&&e.preventDefault();});
+document.addEventListener('keyup',e=>keys[e.code]=false);
+
+function loop(){
+  if(!gameRunning) return;
+  frame++;
+  ctx.fillStyle='rgba(0,0,5,0.2)';ctx.fillRect(0,0,W,H);
+  // Starfield
+  stars.forEach(s=>{
+    const sx=(s.x-ship.x*0.1+W*1.5)%(W*3)-W;
+    const sy=(s.y-ship.y*0.1+H*1.5)%(H*3)-H;
+    if(sx<-10||sx>W+10||sy<-10||sy>H+10) return;
+    ctx.globalAlpha=0.2+s.b*0.6;ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  // Update ship
+  if((keys['ArrowLeft']||keys['KeyA'])) ship.angle-=0.06;
+  if((keys['ArrowRight']||keys['KeyD'])) ship.angle+=0.06;
+  if((keys['ArrowUp']||keys['KeyW'])&&fuel>0){
+    ship.vx+=Math.cos(ship.angle)*0.25;
+    ship.vy+=Math.sin(ship.angle)*0.25;
+    fuel=Math.max(0,fuel-0.05);
+    ship.thrustOn=true;
+    ship.trail.push({x:ship.x,y:ship.y,life:1});
+  } else ship.thrustOn=false;
+  if((keys['ArrowDown']||keys['KeyS'])){ship.vx*=0.94;ship.vy*=0.94;}
+  ship.vx*=0.99;ship.vy*=0.99;
+  ship.x+=ship.vx;ship.y+=ship.vy;
+  depth=Math.sqrt(ship.x*ship.x+ship.y*ship.y)|0;
+
+  // Fuel refill from ores
+  ore>0&&(fuel=Math.min(100,fuel+0.01));
+
+  // Laser
+  ship.laserCooldown=Math.max(0,ship.laserCooldown-1);
+  if(keys['Space']&&ship.laserCooldown===0){
+    bullets.push({x:ship.x+Math.cos(ship.angle)*20,y:ship.y+Math.sin(ship.angle)*20,vx:Math.cos(ship.angle)*12+ship.vx,vy:Math.sin(ship.angle)*12+ship.vy,life:40});
+    ship.laserCooldown=8;beep(880,0.05);
+  }
+
+  // Spawn more asteroids as needed
+  if(asteroids.length<20) spawnAsteroid();
+
+  // Draw trail
+  ship.trail=ship.trail.filter(t=>{t.life-=0.05;if(t.life<=0)return false;ctx.globalAlpha=t.life*0.5;ctx.fillStyle='#ff8800';ctx.beginPath();ctx.arc(t.x-ship.x+W/2,t.y-ship.y+H/2,3*t.life,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;return true;});
+
+  // Draw asteroids
+  asteroids.forEach(a=>{
+    a.x+=a.vx;a.y+=a.vy;a.angle+=a.spin;
+    const sx=a.x-ship.x+W/2,sy=a.y-ship.y+H/2;
+    if(sx<-200||sx>W+200||sy<-200||sy>H+200) return;
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(a.angle);
+    ctx.shadowBlur=a.type==='ore'?15:5;ctx.shadowColor=a.color;
+    ctx.fillStyle=a.color;ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=1;
+    ctx.beginPath();a.pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));ctx.closePath();ctx.fill();ctx.stroke();
+    // HP bar
+    if(a.hp<a.maxHp){
+      const bw=a.r*2,bh=4;
+      ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(-bw/2,-a.r-10,bw,bh);
+      ctx.fillStyle='#ff4444';ctx.fillRect(-bw/2,-a.r-10,bw*(a.hp/a.maxHp),bh);
+    }
+    ctx.shadowBlur=0;ctx.restore();
+    // Player collision
+    const dist=Math.hypot(sx-W/2,sy-H/2);
+    if(dist<a.r+18){hull-=0.5;beep(100,0.05);if(hull<=0){endGame();return;}}
+  });
+
+  // Bullets
+  bullets=bullets.filter(b=>{
+    b.x+=b.vx;b.y+=b.vy;b.life--;
+    const sx=b.x-ship.x+W/2,sy=b.y-ship.y+H/2;
+    if(sx<-50||sx>W+50||sy<-50||sy>H+50||b.life<=0) return false;
+    ctx.shadowBlur=15;ctx.shadowColor='#64dcff';ctx.fillStyle='#64dcff';
+    ctx.beginPath();ctx.arc(sx,sy,3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    for(let i=asteroids.length-1;i>=0;i--){
+      const a=asteroids[i];
+      if(Math.hypot(b.x-a.x,b.y-a.y)<a.r){
+        a.hp--;
+        for(let k=0;k<5;k++) particles.push({x:sx,y:sy,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5,life:1,color:a.color});
+        if(a.hp<=0){
+          if(a.type==='ore'){ore+=Math.ceil(a.r/10);score+=50;beep(660,0.1);}
+          else score+=20;
+          for(let k=0;k<12;k++) particles.push({x:sx,y:sy,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8,life:1,color:a.color});
+          if(a.r>35){spawnAsteroid(a.x,a.y);spawnAsteroid(a.x,a.y);}
+          asteroids.splice(i,1);
+        }
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Particles
+  particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vx*=0.95;p.vy*=0.95;p.life-=0.04;if(p.life<=0)return false;ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.shadowBlur=5;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(p.x,p.y,2,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.globalAlpha=1;return true;});
+
+  // Draw ship
+  drawShip();
+
+  // HUD update
+  document.getElementById('oreEl').textContent=ore;
+  document.getElementById('fuelEl').textContent=fuel.toFixed(0);
+  document.getElementById('depthEl').textContent=depth;
+  document.getElementById('scoreEl').textContent=score;
+  document.getElementById('hullBar').style.width=hull+'%';
+  document.getElementById('hullBar').style.background=hull>50?'linear-gradient(90deg,#64dcff,#00ff88)':hull>25?'linear-gradient(90deg,#ffaa00,#ff5500)':'linear-gradient(90deg,#ff0000,#ff4400)';
+
+  // Minimap
+  mCtx.fillStyle='rgba(0,0,10,0.8)';mCtx.fillRect(0,0,120,120);
+  mCtx.strokeStyle='rgba(100,220,255,0.2)';mCtx.strokeRect(0,0,120,120);
+  const scale=120/2000;
+  asteroids.forEach(a=>{
+    const mx=(a.x-ship.x)*scale+60,my=(a.y-ship.y)*scale+60;
+    if(mx<0||mx>120||my<0||my>120) return;
+    mCtx.fillStyle=a.type==='ore'?'#ff8800':'#446688';
+    mCtx.beginPath();mCtx.arc(mx,my,2,0,Math.PI*2);mCtx.fill();
+  });
+  mCtx.fillStyle='#64dcff';mCtx.beginPath();mCtx.arc(60,60,3,0,Math.PI*2);mCtx.fill();
+
+  requestAnimationFrame(loop);
+}
+
+function drawShip(){
+  ctx.save();ctx.translate(W/2,H/2);ctx.rotate(ship.angle+Math.PI/2);
+  ctx.shadowBlur=30;ctx.shadowColor='#64dcff';
+  ctx.fillStyle='#1a3a5c';ctx.beginPath();ctx.moveTo(0,-22);ctx.lineTo(14,14);ctx.lineTo(0,6);ctx.lineTo(-14,14);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#64dcff';ctx.beginPath();ctx.moveTo(0,-22);ctx.lineTo(6,0);ctx.lineTo(0,-5);ctx.lineTo(-6,0);ctx.closePath();ctx.fill();
+  if(ship.thrustOn){
+    ctx.shadowColor='#ff8800';
+    ctx.fillStyle='#ff6600';ctx.beginPath();ctx.moveTo(-8,14);ctx.lineTo(0,14+10+Math.random()*15);ctx.lineTo(8,14);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#ffcc00';ctx.beginPath();ctx.moveTo(-4,14);ctx.lineTo(0,14+6+Math.random()*8);ctx.lineTo(4,14);ctx.closePath();ctx.fill();
+  }
+  ctx.shadowBlur=0;ctx.restore();
+}
+
+function endGame(){
+  gameRunning=false;bgmOn=false;if(bgmId)clearTimeout(bgmId);
+  document.getElementById('overlay').innerHTML=`<h1 style="font-size:clamp(40px,6vw,80px);font-weight:700;color:#ff4444;letter-spacing:6px;text-shadow:0 0 40px rgba(255,68,68,0.5);margin-bottom:12px;">DESTROYED</h1><div style="color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:3px;margin-bottom:6px;">SCORE: ${score}</div><div style="color:rgba(255,255,255,0.2);font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;margin-bottom:40px;">ORE MINED: ${ore}</div><button class="btn" onclick="startGame()">REDEPLOY</button>`;
+  document.getElementById('overlay').style.display='flex';
+}
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth;canvas.height=window.innerHeight;});
+</script>
+</body>
+</html>
