@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Void Drift — Asteroid Dodge</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Audiowide&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:'Audiowide',sans-serif;}
+#canvas{display:block;}
+#hud{position:fixed;top:20px;left:0;width:100%;display:flex;justify-content:space-between;padding:0 28px;pointer-events:none;}
+.hb{background:rgba(0,180,255,0.08);border:1px solid rgba(0,180,255,0.25);border-radius:8px;padding:10px 20px;color:#00b4ff;font-size:12px;letter-spacing:2px;}
+.hb span{display:block;font-size:22px;font-weight:700;color:#fff;}
+#overlay{position:fixed;inset:0;background:radial-gradient(ellipse,rgba(0,5,20,0.96),#000);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+#overlay h1{font-size:clamp(36px,6vw,72px);color:#00b4ff;text-shadow:0 0 30px #00b4ff;letter-spacing:6px;margin-bottom:6px;animation:glow 2s infinite;}
+#overlay p{color:#555;font-size:13px;letter-spacing:3px;margin-bottom:36px;}
+#startBtn{padding:14px 50px;font-family:'Audiowide',sans-serif;font-size:14px;letter-spacing:4px;background:transparent;border:1px solid #00b4ff;color:#00b4ff;border-radius:4px;cursor:pointer;transition:all 0.3s;}
+#startBtn:hover{background:rgba(0,180,255,0.1);box-shadow:0 0 30px rgba(0,180,255,0.4);}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:36px;color:#fff;letter-spacing:4px;text-shadow:0 0 20px #00b4ff;opacity:0;pointer-events:none;transition:opacity 0.3s;text-align:center;}
+#hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.3);font-size:11px;letter-spacing:2px;}
+#shield-bar{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);width:200px;}
+#shield-label{color:#00b4ff;font-size:11px;letter-spacing:2px;margin-bottom:4px;text-align:center;}
+#shield-fill{height:6px;background:#00b4ff;border-radius:3px;transition:width 0.1s;box-shadow:0 0 8px #00b4ff;}
+@keyframes glow{0%,100%{text-shadow:0 0 30px #00b4ff}50%{text-shadow:0 0 60px #00b4ff,0 0 20px #fff}}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div class="hb">SCORE<span id="scoreVal">0</span></div>
+  <div class="hb" style="text-align:center;">LEVEL<span id="lvlVal">1</span></div>
+  <div class="hb" style="text-align:right;">BEST<span id="bestVal">0</span></div>
+</div>
+<div id="shield-label">SHIELD</div>
+<div id="shield-bar"><div id="shield-fill" style="width:100%"></div></div>
+<div id="msg"></div>
+<div id="hint">MOUSE / TOUCH — DODGE &nbsp;|&nbsp; SURVIVE AS LONG AS POSSIBLE</div>
+<div id="overlay">
+  <h1>VOID DRIFT</h1>
+  <p>DODGE THE ASTEROIDS — SURVIVE THE VOID</p>
+  <button id="startBtn" onclick="startGame()">LAUNCH</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const AC=new(window.AudioContext||window.webkitAudioContext)();
+function tone(f,d,v=0.15,t='sine'){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,AC.currentTime);g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+d);o.start();o.stop(AC.currentTime+d);}
+function hitSnd(){tone(150,0.2,0.3,'sawtooth');}
+function shieldSnd(){tone(800,0.1,0.2);tone(1200,0.15,0.15,'sine',0.05);}
+let bgmOn=false;
+function startBGM(){if(bgmOn)return;bgmOn=true;const n=[98,110,130,110,98,87];let i=0;function s(){if(!bgmOn)return;tone(n[i%n.length],0.5,0.03,'sine');tone(n[i%n.length]*2,0.25,0.02,'triangle',0.1);i++;setTimeout(s,500);}s();}
+
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('canvas'),antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x000005);scene.fog=new THREE.FogExp2(0x000005,0.015);
+const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,0.1,200);
+camera.position.set(0,0,20);camera.lookAt(0,0,0);
+
+scene.add(new THREE.AmbientLight(0x112233,2));
+const dl=new THREE.DirectionalLight(0x4488ff,2);dl.position.set(0,10,10);scene.add(dl);
+
+// Stars
+const sg=new THREE.BufferGeometry();const sv=[];
+for(let i=0;i<5000;i++)sv.push((Math.random()-0.5)*300,(Math.random()-0.5)*300,-Math.random()*300);
+sg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));
+scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:0.2,sizeAttenuation:true})));
+
+// Ship
+function makeShip(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.ConeGeometry(0.3,1.2,6),new THREE.MeshPhongMaterial({color:0x00b4ff,emissive:0x001133,shininess:120}));
+  body.rotation.x=Math.PI/2;g.add(body);
+  const wings=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.06,0.5),new THREE.MeshPhongMaterial({color:0x0055aa}));
+  wings.position.z=0.3;g.add(wings);
+  const eng=new THREE.Mesh(new THREE.SphereGeometry(0.12,6,6),new THREE.MeshBasicMaterial({color:0x00ffff}));
+  eng.position.z=0.8;g.add(eng);
+  const pl=new THREE.PointLight(0x00b4ff,2,4);pl.position.z=0.5;g.add(pl);
+  scene.add(g);return g;
+}
+const ship=makeShip();
+ship.position.set(0,0,10);
+
+// Shield bubble
+const shieldMesh=new THREE.Mesh(new THREE.SphereGeometry(0.8,16,16),new THREE.MeshBasicMaterial({color:0x00b4ff,transparent:true,opacity:0.15,side:THREE.DoubleSide}));
+ship.add(shieldMesh);
+
+// Asteroids
+const asteroids=[];
+function spawnAsteroid(level){
+  const segs=Math.floor(4+Math.random()*4);
+  const geo=new THREE.DodecahedronGeometry(0.3+Math.random()*0.5+level*0.05,0);
+  // Distort vertices
+  const pos=geo.attributes.position;
+  for(let i=0;i<pos.count;i++){pos.setXYZ(i,pos.getX(i)*(0.7+Math.random()*0.6),pos.getY(i)*(0.7+Math.random()*0.6),pos.getZ(i)*(0.7+Math.random()*0.6));}
+  pos.needsUpdate=true;geo.computeVertexNormals();
+  const colors=[0x886644,0x664422,0x998866,0x554433];
+  const mat=new THREE.MeshPhongMaterial({color:colors[Math.floor(Math.random()*colors.length)],shininess:20});
+  const mesh=new THREE.Mesh(geo,mat);mesh.castShadow=true;
+  const side=Math.random()>0.5?1:-1;
+  mesh.position.set(side*(7+Math.random()*4),(Math.random()-0.5)*8,-30-Math.random()*20);
+  mesh.userData={vel:new THREE.Vector3((Math.random()-0.5)*0.05,(Math.random()-0.5)*0.03,0.1+level*0.01+Math.random()*0.05),rot:new THREE.Vector3((Math.random()-0.5)*0.02,(Math.random()-0.5)*0.02,(Math.random()-0.5)*0.02),size:geo.boundingSphere?geo.boundingSphere.radius:0.5};
+  scene.add(mesh);asteroids.push(mesh);
+}
+
+// Particles
+const particles=[];
+function burst(pos,col=0xff6600){for(let i=0;i<12;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(0.05,4,4),new THREE.MeshBasicMaterial({color:col}));m.position.copy(pos);const v=new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).multiplyScalar(0.15);particles.push({mesh:m,vel:v,life:30});scene.add(m);}}
+
+// State
+let mouseX=0,mouseY=0,score=0,best=0,shield=100,level=1,gameActive=false,spawnTimer=0,scoreTimer=0,levelTimer=0;
+
+document.addEventListener('mousemove',e=>{mouseX=(e.clientX/innerWidth-0.5)*12;mouseY=-(e.clientY/innerHeight-0.5)*8;});
+document.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];mouseX=(t.clientX/innerWidth-0.5)*12;mouseY=-(t.clientY/innerHeight-0.5)*8;},{passive:false});
+
+function showMsg(t,d=1200){const el=document.getElementById('msg');el.textContent=t;el.style.opacity=1;setTimeout(()=>el.style.opacity=0,d);}
+
+function startGame(){
+  if(AC.state==='suspended')AC.resume();
+  document.getElementById('overlay').style.display='none';
+  gameActive=true;score=0;shield=100;level=1;spawnTimer=0;scoreTimer=0;levelTimer=0;
+  asteroids.forEach(a=>scene.remove(a));asteroids.length=0;
+  startBGM();showMsg('DODGE!',1000);
+}
+
+function gameOver(){
+  gameActive=false;bgmOn=false;
+  if(score>best){best=score;document.getElementById('bestVal').textContent=best;}
+  const ov=document.getElementById('overlay');ov.style.display='flex';
+  ov.querySelector('h1').textContent='DESTROYED';ov.querySelector('h1').style.color='#ff4444';
+  ov.querySelector('p').textContent='SCORE: '+score;ov.querySelector('button').textContent='TRY AGAIN';
+}
+
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=clock.getDelta();
+
+  if(!gameActive){renderer.render(scene,camera);return;}
+
+  // Ship movement
+  ship.position.x+=(mouseX-ship.position.x)*0.08;
+  ship.position.y+=(mouseY-ship.position.y)*0.08;
+  ship.rotation.z=-mouseX*0.05;
+  ship.position.z=10;
+
+  // Score & level
+  scoreTimer++;if(scoreTimer%30===0){score++;document.getElementById('scoreVal').textContent=score;}
+  levelTimer++;if(levelTimer>600){levelTimer=0;level++;document.getElementById('lvlVal').textContent=level;showMsg('LEVEL '+level,1000);}
+
+  // Shield regen
+  if(shield<100){shield=Math.min(100,shield+0.05);document.getElementById('shield-fill').style.width=shield+'%';}
+
+  // Spawn
+  spawnTimer++;const spawnRate=Math.max(20,80-level*5);
+  if(spawnTimer>=spawnRate){spawnTimer=0;spawnAsteroid(level);if(level>3&&Math.random()<0.3)spawnAsteroid(level);}
+
+  // Move asteroids
+  for(let i=asteroids.length-1;i>=0;i--){
+    const a=asteroids[i];
+    a.position.add(a.userData.vel);
+    a.rotation.x+=a.userData.rot.x;a.rotation.y+=a.userData.rot.y;
+    // Out of bounds
+    if(a.position.z>15||Math.abs(a.position.x)>20){scene.remove(a);asteroids.splice(i,1);continue;}
+    // Collision
+    const dist=a.position.distanceTo(ship.position);
+    const size=a.userData.size||0.5;
+    if(dist<size+0.6){
+      burst(a.position);hitSnd();
+      shield-=25;document.getElementById('shield-fill').style.width=Math.max(0,shield)+'%';
+      scene.remove(a);asteroids.splice(i,1);
+      if(shield<=0){burst(ship.position,0x00b4ff);gameOver();return;}
+    }
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.mesh.position.add(p.vel);p.life--;if(p.life<=0){scene.remove(p.mesh);particles.splice(i,1);}}
+
+  // Shield glow
+  shieldMesh.material.opacity=0.05+shield/100*0.15;
+
+  // Camera slight shake on hit
+  camera.position.x=Math.sin(Date.now()*0.01)*0.02;
+
+  // Stars parallax
+  sg.attributes.position.needsUpdate=true;
+
+  renderer.render(scene,camera);
+}
+animate();
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
