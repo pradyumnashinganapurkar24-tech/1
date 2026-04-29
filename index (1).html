@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUBE ENIGMA — 3D Puzzle</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,300;1,300&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0a0608;overflow:hidden;font-family:'Cinzel',serif;color:#d4af7a;}
+  canvas{display:block;}
+  #ui{position:fixed;top:0;left:0;width:100%;padding:24px;display:flex;justify-content:space-between;z-index:10;pointer-events:none;}
+  .panel{background:rgba(212,175,122,0.05);border:1px solid rgba(212,175,122,0.2);padding:14px 24px;backdrop-filter:blur(10px);}
+  .label{font-size:9px;letter-spacing:4px;color:rgba(212,175,122,0.4);font-family:'Crimson Pro',serif;font-style:italic;}
+  .value{font-size:22px;color:#d4af7a;text-shadow:0 0 15px rgba(212,175,122,0.5);}
+  #overlay{position:fixed;inset:0;background:rgba(5,3,4,0.96);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;}
+  #overlay h1{font-size:clamp(36px,6vw,72px);color:#d4af7a;letter-spacing:12px;text-shadow:0 0 40px rgba(212,175,122,0.4);margin-bottom:16px;}
+  #overlay p{color:rgba(212,175,122,0.4);font-family:'Crimson Pro',serif;font-style:italic;font-size:16px;letter-spacing:2px;margin-bottom:40px;}
+  .btn{background:transparent;border:1px solid rgba(212,175,122,0.5);color:#d4af7a;padding:14px 44px;font-family:'Cinzel',serif;font-size:13px;letter-spacing:5px;cursor:pointer;transition:all 0.4s;pointer-events:all;}
+  .btn:hover{background:rgba(212,175,122,0.1);border-color:#d4af7a;box-shadow:0 0 30px rgba(212,175,122,0.2);}
+  #msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px;color:#d4af7a;letter-spacing:6px;text-shadow:0 0 30px #d4af7a;opacity:0;transition:opacity 0.5s;z-index:15;pointer-events:none;}
+  #timer-bar{position:fixed;bottom:0;left:0;height:3px;background:linear-gradient(90deg,#d4af7a,#ff9944);transition:width 0.1s;z-index:10;}
+  #audioBtn{position:fixed;bottom:20px;right:20px;background:transparent;border:1px solid rgba(212,175,122,0.3);color:#d4af7a;padding:8px 16px;font-family:'Crimson Pro',serif;font-size:12px;cursor:pointer;z-index:30;font-style:italic;letter-spacing:1px;}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="panel"><div class="label">MOVES</div><div class="value" id="movesDisplay">0</div></div>
+  <div class="panel"><div class="label">LEVEL</div><div class="value" id="levelDisplay">1</div></div>
+  <div class="panel"><div class="label">SCORE</div><div class="value" id="scoreDisplay">0</div></div>
+</div>
+<div id="timer-bar" style="width:100%"></div>
+<canvas id="c"></canvas>
+<div id="msg"></div>
+<div id="overlay">
+  <h1>CUBE ENIGMA</h1>
+  <p>Rotate & solve the ancient puzzle — click faces to rotate — match the symbols</p>
+  <button class="btn" onclick="startGame()">BEGIN RITUAL</button>
+</div>
+<button id="audioBtn" onclick="toggleAudio()">♫ Ambience</button>
+
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+// Audio
+let audioCtx,masterGain,bgmNodes=[],bgmOn=false;
+function initAudio(){
+  if(audioCtx) return;
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  masterGain=audioCtx.createGain();masterGain.gain.value=0.3;masterGain.connect(audioCtx.destination);
+}
+function playAmbience(){
+  if(!audioCtx) return;
+  bgmOn=true;
+  const drones=[55,82.4,110,164.8];
+  drones.forEach(freq=>{
+    const o=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    const b=audioCtx.createBiquadFilter();
+    b.type='lowpass';b.frequency.value=400;
+    o.connect(b);b.connect(g);g.connect(masterGain);
+    o.type='sine';o.frequency.value=freq;
+    g.gain.setValueAtTime(0,audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.2,audioCtx.currentTime+3);
+    o.start();
+    bgmNodes.push({o,g});
+    // LFO
+    const lfo=audioCtx.createOscillator();
+    const lfoGain=audioCtx.createGain();
+    lfo.frequency.value=0.1+Math.random()*0.2;
+    lfoGain.gain.value=0.05;
+    lfo.connect(lfoGain);lfoGain.connect(g.gain);
+    lfo.start();
+    bgmNodes.push({o:lfo,g:lfoGain});
+  });
+}
+function stopAmbience(){
+  bgmOn=false;
+  bgmNodes.forEach(n=>{try{n.o.stop();}catch(e){}});
+  bgmNodes=[];
+}
+function toggleAudio(){
+  initAudio();
+  if(!bgmOn){playAmbience();document.getElementById('audioBtn').textContent='♫ Silence';}
+  else{stopAmbience();document.getElementById('audioBtn').textContent='♫ Ambience';}
+}
+function playClick(){if(!audioCtx)return;const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(masterGain);o.frequency.value=660;o.type='sine';g.gain.setValueAtTime(0.4,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.01,audioCtx.currentTime+0.2);o.start();o.stop(audioCtx.currentTime+0.2);}
+function playWin(){if(!audioCtx)return;[523,659,784,1047].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(masterGain);o.frequency.value=f;o.type='sine';g.gain.setValueAtTime(0,audioCtx.currentTime+i*0.1);g.gain.linearRampToValueAtTime(0.4,audioCtx.currentTime+i*0.1+0.05);g.gain.exponentialRampToValueAtTime(0.01,audioCtx.currentTime+i*0.1+0.3);o.start(audioCtx.currentTime+i*0.1);o.stop(audioCtx.currentTime+i*0.1+0.3);});}
+
+// Cube puzzle game
+const SYMBOLS=['✦','◈','⬡','⟁','◎','⊕'];
+const COLORS=['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c'];
+let gameState={};
+
+function initPuzzle(level){
+  const size=Math.min(3+Math.floor(level/3),6);
+  const target=[];
+  const board=[];
+  for(let i=0;i<size*size;i++){
+    const v=Math.floor(i/2)%SYMBOLS.length;
+    target.push(v);
+  }
+  // Shuffle board
+  const shuffled=[...target];
+  for(let k=0;k<100+level*20;k++){
+    const a=Math.floor(Math.random()*shuffled.length);
+    const b=Math.floor(Math.random()*shuffled.length);
+    [shuffled[a],shuffled[b]]=[shuffled[b],shuffled[a]];
+  }
+  return{size,target:target.sort((a,b)=>a-b),board:shuffled,moves:0,selected:-1,timeLeft:60+level*10,maxTime:60+level*10};
+}
+
+let level=1,score=0,moves=0,gameRunning=false;
+let puzzle;
+let animFrame=0;
+let particles2=[];
+
+function startGame(){
+  level=1;score=0;moves=0;gameRunning=true;
+  puzzle=initPuzzle(level);
+  document.getElementById('overlay').style.display='none';
+  initAudio();bgmOn=true;playAmbience();
+  requestAnimationFrame(gameLoop);
+}
+
+function getCellAt(mx,my){
+  const cx=canvas.width/2,cy=canvas.height/2;
+  const cw=Math.min(canvas.width*0.6,500);
+  const cellSize=cw/puzzle.size;
+  const startX=cx-cw/2,startY=cy-cw/2;
+  const col=Math.floor((mx-startX)/cellSize);
+  const row=Math.floor((my-startY)/cellSize);
+  if(col<0||col>=puzzle.size||row<0||row>=puzzle.size) return -1;
+  return row*puzzle.size+col;
+}
+
+canvas.addEventListener('click',e=>{
+  if(!gameRunning) return;
+  const idx=getCellAt(e.clientX,e.clientY);
+  if(idx===-1){puzzle.selected=-1;return;}
+  playClick();
+  if(puzzle.selected===-1){puzzle.selected=idx;}
+  else{
+    if(puzzle.selected!==idx){
+      [puzzle.board[puzzle.selected],puzzle.board[idx]]=[puzzle.board[idx],puzzle.board[puzzle.selected]];
+      puzzle.moves++;moves++;
+      spawnSwapParticles(idx);
+      document.getElementById('movesDisplay').textContent=moves;
+      checkWin();
+    }
+    puzzle.selected=-1;
+  }
+});
+
+function spawnSwapParticles(idx){
+  const cx=canvas.width/2,cy=canvas.height/2;
+  const cw=Math.min(canvas.width*0.6,500);
+  const cellSize=cw/puzzle.size;
+  const startX=cx-cw/2,startY=cy-cw/2;
+  const col=idx%puzzle.size,row=Math.floor(idx/puzzle.size);
+  const px=startX+col*cellSize+cellSize/2,py=startY+row*cellSize+cellSize/2;
+  for(let i=0;i<8;i++) particles2.push({x:px,y:py,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:1,color:'#d4af7a'});
+}
+
+function checkWin(){
+  const sorted=[...puzzle.board].sort((a,b)=>a-b);
+  const match=sorted.every((v,i)=>v===puzzle.target[i]);
+  if(match){
+    score+=1000*level-puzzle.moves*10;
+    document.getElementById('scoreDisplay').textContent=score;
+    playWin();
+    showMsg('SOLVED!');
+    setTimeout(()=>{level++;puzzle=initPuzzle(level);document.getElementById('levelDisplay').textContent=level;},1800);
+  }
+}
+
+function showMsg(text){
+  const el=document.getElementById('msg');
+  el.textContent=text;el.style.opacity='1';
+  setTimeout(()=>el.style.opacity='0',1500);
+}
+
+let lastTime=0;
+function gameLoop(ts){
+  if(!gameRunning) return;
+  const dt=(ts-lastTime)/1000;lastTime=ts;
+  puzzle.timeLeft-=dt;
+  if(puzzle.timeLeft<=0){showMsg('TIME!');puzzle=initPuzzle(level);}
+  const pct=Math.max(0,puzzle.timeLeft/puzzle.maxTime)*100;
+  document.getElementById('timer-bar').style.width=pct+'%';
+  document.getElementById('timer-bar').style.background=pct>50?'linear-gradient(90deg,#d4af7a,#ff9944)':'linear-gradient(90deg,#ff4444,#ff0000)';
+
+  animFrame++;
+  ctx.fillStyle='rgba(10,6,8,0.3)';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // BG pattern
+  drawBGPattern();
+
+  // Draw puzzle grid
+  drawPuzzle();
+
+  // Particles
+  particles2=particles2.filter(p=>{
+    p.x+=p.vx;p.y+=p.vy;p.life-=0.05;
+    if(p.life<=0) return false;
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.shadowBlur=10;ctx.shadowColor=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+    return true;
+  });
+
+  requestAnimationFrame(gameLoop);
+}
+
+function drawBGPattern(){
+  ctx.save();
+  for(let i=0;i<8;i++){
+    ctx.strokeStyle=`rgba(212,175,122,${0.01+i*0.005})`;
+    ctx.lineWidth=1;
+    const r=100+i*80+animFrame*0.1;
+    ctx.beginPath();
+    ctx.arc(canvas.width/2,canvas.height/2,r,animFrame*0.002*(i%2===0?1:-1),animFrame*0.002*(i%2===0?1:-1)+Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPuzzle(){
+  const cx=canvas.width/2,cy=canvas.height/2;
+  const cw=Math.min(canvas.width*0.6,500);
+  const cellSize=cw/puzzle.size;
+  const startX=cx-cw/2,startY=cy-cw/2;
+  const gap=3;
+
+  for(let i=0;i<puzzle.board.length;i++){
+    const col=i%puzzle.size,row=Math.floor(i/puzzle.size);
+    const x=startX+col*cellSize+gap,y=startY+row*cellSize+gap;
+    const w=cellSize-gap*2,h=cellSize-gap*2;
+    const sym=puzzle.board[i];
+    const isSelected=puzzle.selected===i;
+
+    // 3D cube effect
+    const depth=6;
+    const isCorrect=puzzle.board.sort&&false; // visual only
+    const col3d=isSelected?'rgba(212,175,122,0.3)':'rgba(212,175,122,0.06)';
+    const border=isSelected?'#d4af7a':'rgba(212,175,122,0.2)';
+
+    // Shadow face (3D)
+    ctx.fillStyle='rgba(0,0,0,0.4)';
+    ctx.beginPath();ctx.roundRect(x+depth,y+depth,w,h,4);ctx.fill();
+    // Right face
+    ctx.fillStyle='rgba(212,175,122,0.08)';
+    ctx.beginPath();ctx.moveTo(x+w,y);ctx.lineTo(x+w+depth,y-depth);ctx.lineTo(x+w+depth,y+h-depth);ctx.lineTo(x+w,y+h);ctx.closePath();ctx.fill();
+    // Bottom face
+    ctx.fillStyle='rgba(212,175,122,0.05)';
+    ctx.beginPath();ctx.moveTo(x,y+h);ctx.lineTo(x+depth,y+h-depth);ctx.lineTo(x+w+depth,y+h-depth);ctx.lineTo(x+w,y+h);ctx.closePath();ctx.fill();
+    // Front face
+    ctx.fillStyle=col3d;
+    ctx.strokeStyle=border;ctx.lineWidth=isSelected?1.5:1;
+    ctx.shadowBlur=isSelected?20:5;ctx.shadowColor='rgba(212,175,122,0.5)';
+    ctx.beginPath();ctx.roundRect(x,y,w,h,4);ctx.fill();ctx.stroke();
+    ctx.shadowBlur=0;
+
+    // Symbol
+    const fontSize=Math.floor(cellSize*0.42);
+    ctx.font=`${fontSize}px Arial`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillStyle=COLORS[sym];
+    ctx.shadowBlur=10;ctx.shadowColor=COLORS[sym];
+    ctx.fillText(SYMBOLS[sym],x+w/2,y+h/2);
+    ctx.shadowBlur=0;
+  }
+}
+
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth;canvas.height=window.innerHeight;});
+</script>
+</body>
+</html>
