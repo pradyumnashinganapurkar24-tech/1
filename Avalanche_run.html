@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avalanche Escape</title>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #dcedf6; /* Icy blue-white */
+            color: #001528;
+            font-family: 'Space Mono', monospace;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .hud {
+            position: absolute;
+            padding: 30px;
+            pointer-events: none;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .score-box {
+            font-size: 2.5rem;
+            color: #004a8f;
+            font-family: 'Black Han Sans', sans-serif;
+            text-shadow: 2px 2px 0 #fff;
+        }
+        
+        .speed-box {
+            font-size: 1.5rem;
+            color: #ff4a4a;
+            font-weight: bold;
+        }
+
+        /* Center Menus */
+        .menu-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(220, 237, 246, 0.85);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            pointer-events: auto;
+            transition: opacity 0.3s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none !important;
+        }
+
+        h1 {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: 6rem;
+            color: #004a8f;
+            text-shadow: 4px 4px 0 #fff, 8px 8px 0 rgba(0, 74, 143, 0.2);
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: center;
+            line-height: 1;
+        }
+
+        .btn-play {
+            background: #ff4a4a;
+            border: 4px solid #fff;
+            color: #fff;
+            padding: 20px 60px;
+            font-size: 2rem;
+            font-family: 'Black Han Sans', sans-serif;
+            cursor: pointer;
+            box-shadow: 0 10px 0 #c92a2a;
+            border-radius: 50px;
+            transition: all 0.1s;
+            text-transform: uppercase;
+            margin-top: 40px;
+        }
+
+        .btn-play:hover {
+            transform: translateY(5px);
+            box-shadow: 0 5px 0 #c92a2a;
+            background: #ff6b6b;
+        }
+        
+        .btn-play:active {
+            transform: translateY(10px);
+            box-shadow: 0 0 0 #c92a2a;
+        }
+
+        .vignette {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 60%, rgba(0, 21, 40, 0.1) 100%);
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+    <div class="vignette"></div>
+
+    <div id="ui-layer">
+        <!-- In-Game HUD -->
+        <div id="hud" class="hud hidden">
+            <div class="score-box"><span id="distance">0</span>m</div>
+            <div class="speed-box"><span id="speed-display">0</span> km/h</div>
+        </div>
+
+        <!-- Start Menu -->
+        <div id="start-menu" class="menu-overlay">
+            <h1>AVALANCHE<br>ESCAPE</h1>
+            <p style="font-size: 1.5rem; color: #001528; margin-top: 20px; font-weight: bold; text-align: center;">
+                Use your mouse to steer left and right.<br>
+                Dodge the trees and rocks.<br>
+                Survive the descent.
+            </p>
+            <button class="btn-play" id="btn-start">DROP IN</button>
+        </div>
+
+        <!-- Game Over Menu -->
+        <div id="gameover-menu" class="menu-overlay hidden" style="background: rgba(0, 21, 40, 0.9);">
+            <h1 style="color: #ff4a4a; text-shadow: none;">WIPEOUT</h1>
+            <div style="font-size: 3rem; color: #fff; margin-bottom: 10px; font-family: 'Black Han Sans', sans-serif;">
+                DISTANCE: <span id="final-score" style="color: #00f5d4;">0</span>m
+            </div>
+            <button class="btn-play" id="btn-restart" style="background: #00f5d4; color: #001528; box-shadow: 0 10px 0 #00b39b; border-color: #001528;">TRY AGAIN</button>
+        </div>
+    </div>
+
+<script>
+/** 
+ * AVALANCHE ESCAPE
+ * A fast-paced endless downhill skiing/snowboarding game.
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+let width, height;
+
+// Resize handling
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- GAME STATE ---
+let gameState = 'START'; // START, PLAYING, GAMEOVER
+let lastTime = 0;
+let distance = 0;
+let baseSpeed = 0; // Pixels per second
+let speedMultiplier = 1;
+
+let shakeAmount = 0;
+
+// Input
+let mouseX = width / 2;
+window.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+});
+// Touch support for mobile
+window.addEventListener('touchmove', e => {
+    mouseX = e.touches[0].clientX;
+});
+
+// --- AUDIO SYNTHESIS ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let windOsc = null;
+let windGain = null;
+let bgmInterval = null;
+
+function playSound(type) {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    
+    const now = audioCtx.currentTime;
+    
+    switch(type) {
+        case 'start':
+            // Start the wind sound
+            if(!windOsc) {
+                windOsc = audioCtx.createOscillator();
+                windOsc.type = 'sine';
+                windGain = audioCtx.createGain();
+                windOsc.connect(windGain);
+                windGain.connect(audioCtx.destination);
+                windOsc.start();
+            }
+            windGain.gain.setValueAtTime(0.005, now);
+            windOsc.frequency.setValueAtTime(100, now);
+            
+            // Start BGM Arpeggio
+            if(bgmInterval) clearInterval(bgmInterval);
+            const notes = [220, 261.63, 329.63, 392.00, 440, 523.25, 659.25, 783.99]; // A minor pentatonic
+            let step = 0;
+            bgmInterval = setInterval(() => {
+                if(gameState !== 'PLAYING') return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(notes[step % notes.length], audioCtx.currentTime);
+                
+                gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime);
+                osc.stop(audioCtx.currentTime + 0.1);
+                step++;
+            }, 120);
+            break;
+            
+        case 'crash':
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+            
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+            
+            osc.start(now);
+            osc.stop(now + 0.5);
+            
+            // Stop wind & bgm
+            if(windGain) {
+                windGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            }
+            if(bgmInterval) clearInterval(bgmInterval);
+            break;
+            
+        case 'whoosh':
+            const wOsc = audioCtx.createOscillator();
+            const wGain = audioCtx.createGain();
+            wOsc.connect(wGain);
+            wGain.connect(audioCtx.destination);
+            
+            wOsc.type = 'sine';
+            wOsc.frequency.setValueAtTime(800, now);
+            wOsc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+            
+            wGain.gain.setValueAtTime(0.05, now);
+            wGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            
+            wOsc.start(now);
+            wOsc.stop(now + 0.15);
+            break;
+            
+        case 'milestone':
+            const mOsc = audioCtx.createOscillator();
+            const mGain = audioCtx.createGain();
+            mOsc.connect(mGain);
+            mGain.connect(audioCtx.destination);
+            
+            mOsc.type = 'sine';
+            mOsc.frequency.setValueAtTime(880, now); // A5
+            mOsc.frequency.setValueAtTime(1108.73, now + 0.1); // C#6
+            mOsc.frequency.setValueAtTime(1318.51, now + 0.2); // E6
+            
+            mGain.gain.setValueAtTime(0, now);
+            mGain.gain.linearRampToValueAtTime(0.2, now + 0.05);
+            mGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+            
+            mOsc.start(now);
+            mOsc.stop(now + 0.6);
+            break;
+    }
+}
+
+function updateWindSound() {
+    if(gameState === 'PLAYING' && windGain && windOsc) {
+        const now = audioCtx.currentTime;
+        // Pitch and volume scale with speed
+        const speedRatio = baseSpeed / 1000; 
+        windOsc.frequency.setTargetAtTime(100 + (speedRatio * 200), now, 0.1);
+        windGain.gain.setTargetAtTime(0.005 + (speedRatio * 0.015), now, 0.1);
+    }
+}
+
+// --- ENTITIES ---
+
+class Player {
+    constructor() {
+        this.x = width / 2;
+        this.y = height * 0.2; // Fixed near the top
+        this.width = 24;
+        this.height = 40;
+        this.vx = 0;
+        this.angle = 0;
+    }
+
+    update(dt) {
+        // Move towards mouse horizontally
+        const targetX = mouseX;
+        const dx = targetX - this.x;
+        
+        // Smooth movement
+        this.vx = dx * 10;
+        this.x += this.vx * dt;
+        
+        // Clamp to screen edges
+        this.x = Math.max(this.width, Math.min(width - this.width, this.x));
+        
+        // Tilt angle based on horizontal velocity
+        this.angle = (this.vx / 1000) * (Math.PI / 4);
+
+        // Spawn snow trail particles
+        if (Math.random() < 0.5) {
+            particles.push(new Particle(
+                this.x - Math.sin(this.angle)*20, 
+                this.y + Math.cos(this.angle)*20, 
+                '#fff', 
+                0, // initial vy relative to ground
+                0.5
+            ));
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        // Snowboard
+        ctx.fillStyle = '#ff4a4a';
+        ctx.beginPath();
+        ctx.roundRect(-20, 15, 40, 10, 5);
+        ctx.fill();
+        
+        // Body (Dark blue suit)
+        ctx.fillStyle = '#004a8f';
+        ctx.beginPath();
+        ctx.roundRect(-12, -15, 24, 30, 8);
+        ctx.fill();
+        
+        // Head / Helmet (Orange)
+        ctx.fillStyle = '#ff8c00';
+        ctx.beginPath();
+        ctx.arc(0, -20, 12, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Goggles
+        ctx.fillStyle = '#00f5d4';
+        ctx.beginPath();
+        ctx.roundRect(-10, -22, 20, 8, 4);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+class Obstacle {
+    constructor() {
+        this.type = Math.random() < 0.7 ? 'tree' : 'rock';
+        this.x = Math.random() * width;
+        this.y = height + 100; // Spawn below screen
+        
+        if (this.type === 'tree') {
+            this.width = 40 + Math.random() * 30;
+            this.height = this.width * 1.5;
+            this.color = '#1b4332'; // Dark green
+        } else {
+            this.width = 30 + Math.random() * 40;
+            this.height = this.width * 0.8;
+            this.color = '#6c757d'; // Gray
+        }
+        
+        this.passed = false;
+    }
+
+    update(dt) {
+        // Move UP the screen based on global speed
+        this.y -= baseSpeed * dt;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Draw shadow
+        ctx.fillStyle = 'rgba(0, 21, 40, 0.1)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.width/2, this.width/4, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        if (this.type === 'tree') {
+            // Pine tree (3 triangles)
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.moveTo(0, -this.height);
+            ctx.lineTo(-this.width/2, -this.height*0.4);
+            ctx.lineTo(this.width/2, -this.height*0.4);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, -this.height*0.6);
+            ctx.lineTo(-this.width*0.6, 0);
+            ctx.lineTo(this.width*0.6, 0);
+            ctx.fill();
+            
+            // Trunk
+            ctx.fillStyle = '#5c4033';
+            ctx.fillRect(-this.width*0.1, 0, this.width*0.2, 10);
+
+        } else {
+            // Rock (polygon)
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.moveTo(-this.width/2, 0);
+            ctx.lineTo(-this.width*0.3, -this.height);
+            ctx.lineTo(this.width*0.2, -this.height*0.8);
+            ctx.lineTo(this.width/2, 0);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Snow on top of rock
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(-this.width*0.3, -this.height);
+            ctx.lineTo(this.width*0.2, -this.height*0.8);
+            ctx.lineTo(0, -this.height*0.4);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, color, vyOffset = 0, maxLife = 0.5) {
+        this.x = x + (Math.random() - 0.5) * 10;
+        this.y = y;
+        this.color = color;
+        this.life = maxLife;
+        this.maxLife = maxLife;
+        this.radius = Math.random() * 5 + 2;
+        
+        // Move slightly outward, and mostly UP (relative to camera moving down)
+        this.vx = (Math.random() - 0.5) * 100;
+        this.vy = vyOffset + (Math.random() * 50); 
+    }
+    update(dt) {
+        this.x += this.vx * dt;
+        // The particle moves up relative to the screen at the global speed
+        this.y -= (baseSpeed - this.vy) * dt; 
+        this.life -= dt;
+    }
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+// --- GAME LOGIC ---
+
+let player;
+let obstacles = [];
+let particles = [];
+let spawnTimer = 0;
+
+function initGame() {
+    player = new Player();
+    obstacles = [];
+    particles = [];
+    distance = 0;
+    baseSpeed = 400; // Starting speed
+    shakeAmount = 0;
+    
+    document.getElementById('start-menu').classList.add('hidden');
+    document.getElementById('gameover-menu').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    
+    gameState = 'PLAYING';
+    lastTime = performance.now();
+    
+    playSound('start');
+}
+
+function gameOver() {
+    gameState = 'GAMEOVER';
+    playSound('crash');
+    shakeAmount = 40;
+    
+    // Crash explosion
+    for(let i=0; i<30; i++) {
+        particles.push(new Particle(player.x, player.y, '#fff', baseSpeed * 0.8, 1.5));
+        particles.push(new Particle(player.x, player.y, '#ff4a4a', baseSpeed * 0.5, 1.0));
+    }
+    
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('final-score').innerText = Math.floor(distance);
+    
+    setTimeout(() => {
+        document.getElementById('gameover-menu').classList.remove('hidden');
+    }, 1000);
+}
+
+function update(dt) {
+    if (gameState === 'PLAYING') {
+        const prevDistance = distance;
+        
+        // Increase speed endlessly
+        baseSpeed += 15 * dt; 
+        distance += (baseSpeed / 100) * dt;
+        
+        // Milestone logic
+        if (Math.floor(prevDistance / 1000) < Math.floor(distance / 1000) && distance > 100) {
+            playSound('milestone');
+        }
+        
+        // Update HUD
+        document.getElementById('distance').innerText = Math.floor(distance);
+        document.getElementById('speed-display').innerText = Math.floor(baseSpeed / 10);
+        
+        updateWindSound();
+        
+        player.update(dt);
+        
+        // Spawn Obstacles
+        spawnTimer -= dt;
+        const spawnRate = Math.max(0.05, 150 / baseSpeed); // Spawn faster as speed increases
+        
+        if (spawnTimer <= 0) {
+            // Spawn 1 to 3 obstacles at once
+            const count = Math.floor(Math.random() * 3) + 1;
+            for(let i=0; i<count; i++) {
+                obstacles.push(new Obstacle());
+            }
+            spawnTimer = spawnRate;
+        }
+
+        // Update Obstacles and Check Collisions
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            let obs = obstacles[i];
+            obs.update(dt);
+            
+            // Collision Logic (Simple bounding circle/box)
+            const dx = player.x - obs.x;
+            // Trees have hitboxes near their base, rocks have centered hitboxes
+            const hitY = obs.type === 'tree' ? obs.y - 10 : obs.y - obs.height/2;
+            const dy = player.y - hitY;
+            
+            const hitDist = Math.sqrt(dx*dx + dy*dy);
+            const collisionRadius = obs.width * 0.4 + 10; // Player radius roughly 10
+            
+            if (hitDist < collisionRadius) {
+                gameOver();
+                return; // Stop updating
+            } else if (hitDist < collisionRadius + 30 && !obs.nearMissed && obs.y < player.y) {
+                // If closely dodged and passed the player
+                obs.nearMissed = true;
+                playSound('whoosh');
+            }
+            
+            // Remove if off-screen top
+            if (obs.y < -obs.height) {
+                obstacles.splice(i, 1);
+            }
+        }
+    }
+    
+    // Always update particles so crash explosion plays out
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+    
+    if (shakeAmount > 0) {
+        shakeAmount -= dt * 40;
+        if (shakeAmount < 0) shakeAmount = 0;
+    }
+}
+
+function draw() {
+    // Fill icy background
+    ctx.fillStyle = '#dcedf6';
+    ctx.fillRect(0, 0, width, height);
+    
+    // Draw subtle vertical speed lines for sense of motion
+    if(gameState === 'PLAYING') {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for(let i=0; i<10; i++) {
+            const x = (i * width/10 + (distance*10)) % width;
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+        }
+        ctx.stroke();
+    }
+
+    ctx.save();
+    
+    // Apply screen shake
+    if (shakeAmount > 0) {
+        const dx = (Math.random() - 0.5) * shakeAmount;
+        const dy = (Math.random() - 0.5) * shakeAmount;
+        ctx.translate(dx, dy);
+    }
+
+    // Draw Particles
+    for (let p of particles) p.draw(ctx);
+    
+    // Sort obstacles by Y so closer ones overlap further ones (fake 3D depth)
+    obstacles.sort((a, b) => a.y - b.y);
+
+    // Draw Obstacles
+    for (let obs of obstacles) obs.draw(ctx);
+    
+    // Draw Player
+    if(gameState === 'PLAYING') {
+        player.draw(ctx);
+    }
+
+    ctx.restore();
+}
+
+function loop(timestamp) {
+    let dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    if (dt > 0.1) dt = 0.1; // Cap dt on lag
+
+    update(dt);
+    draw();
+    
+    requestAnimationFrame(loop);
+}
+
+// Bind buttons
+document.getElementById('btn-start').addEventListener('click', initGame);
+document.getElementById('btn-restart').addEventListener('click', initGame);
+
+// Start empty loop for background drawing
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
