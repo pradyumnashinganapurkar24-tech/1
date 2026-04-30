@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Insights - Technology Trends</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --text: #334155;
+            --primary: #2563eb;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            padding: 40px 20px;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 60px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        header {
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+
+        .category {
+            color: var(--primary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-bottom: 20px;
+        }
+
+        .meta {
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+
+        p {
+            margin-bottom: 24px;
+            font-size: 1.15rem;
+        }
+
+        .shatter-word {
+            display: inline-block;
+            transition: transform 1.5s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 1.5s ease-out;
+            transform-origin: center;
+        }
+
+        .shattered {
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        /* Final message styling */
+        .oops-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 1s ease-in;
+            pointer-events: none;
+        }
+
+        .oops-message.show {
+            opacity: 1;
+        }
+
+        .oops-message h2 {
+            font-size: 5rem;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .oops-message p {
+            font-size: 1.5rem;
+            color: var(--text);
+        }
+    </style>
+</head>
+
+<body>
+    <main id="content">
+        <header>
+            <span class="category">Technology & Science</span>
+            <h1>The Illusion of Digital Permanence in the Modern Web</h1>
+            <div class="meta">By Dr. Alan Sterling • Published Today</div>
+        </header>
+
+        <p>In an era where our entire lives are digitized, we operate under the collective assumption that data is
+            immutable. We trust our cloud servers, our redundant backups, and our encrypted databases. However, leading
+            researchers have begun to uncover a startling vulnerability in the fundamental architecture of the internet.
+        </p>
+
+        <p>This phenomenon, recently termed as "Semantic Decay," suggests that textual data can spontaneously degrade
+            when interacting with high-frequency user inputs. The theory posits that the act of reading or engaging with
+            digital content creates micro-fluctuations in the rendering engine.</p>
+
+        <p>While this sounds like science fiction, early laboratory tests have shown that simple user actions—like a
+            mouse click or a screen tap—can cause the structural integrity of HTML documents to completely destabilize.
+            The words themselves lose their anchor to the Document Object Model.</p>
+
+        <p>If you are reading this article right now, you are participating in a live field test. The stability of these
+            very paragraphs is completely dependent on your physical interaction with the page. Experts warn that any
+            sudden input might result in catastrophic structural failure.</p>
+
+        <p>Do not click anything. We repeat, for the preservation of this document, please refrain from clicking
+            anywhere on the screen.</p>
+    </main>
+
+    <div class="oops-message" id="oops">
+        <h2>Oops!</h2>
+        <p>You broke the internet.</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const content = document.getElementById('content');
+
+            // Function to wrap every word in a span so we can animate it
+            function wrapWords(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const words = node.nodeValue.split(/(\s+)/);
+                    if (words.length > 1 || (words.length === 1 && words[0].trim() !== '')) {
+                        const fragment = document.createDocumentFragment();
+                        words.forEach(word => {
+                            if (word.trim() === '') {
+                                fragment.appendChild(document.createTextNode(word));
+                            } else {
+                                const span = document.createElement('span');
+                                span.className = 'shatter-word';
+                                span.textContent = word;
+                                fragment.appendChild(span);
+                            }
+                        });
+                        node.parentNode.replaceChild(fragment, node);
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE') {
+                    // Recursively wrap children
+                    Array.from(node.childNodes).forEach(wrapWords);
+                }
+            }
+
+            wrapWords(content);
+
+            const allWords = Array.from(document.querySelectorAll('.shatter-word'));
+            let isShattering = false;
+
+            // --- Web Audio API: Shatter Sound ---
+            function playShatterSound() {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const audioCtx = new AudioContext();
+                
+                // White noise buffer for the "crash"
+                const bufferSize = audioCtx.sampleRate * 2; 
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                
+                // Highpass filter for harshness
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 3000;
+                
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                
+                noise.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                noise.start(audioCtx.currentTime);
+                
+                // Extra oscillators for glass "tinkling"
+                for(let i=0; i<8; i++) {
+                    const osc = audioCtx.createOscillator();
+                    const oscGain = audioCtx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(4000 + Math.random() * 4000, audioCtx.currentTime);
+                    
+                    oscGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    const delay = Math.random() * 0.4;
+                    oscGain.gain.setValueAtTime(0.2, audioCtx.currentTime + delay);
+                    oscGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.2);
+                    
+                    osc.connect(oscGain);
+                    oscGain.connect(audioCtx.destination);
+                    osc.start(audioCtx.currentTime + delay);
+                    osc.stop(audioCtx.currentTime + delay + 0.3);
+                }
+            }
+
+            document.addEventListener('click', (e) => {
+                if (isShattering) return;
+                isShattering = true;
+                playShatterSound();
+
+                const clickX = e.clientX;
+                const clickY = e.clientY;
+
+                allWords.forEach(word => {
+                    const rect = word.getBoundingClientRect();
+                    const wordX = rect.left + rect.width / 2;
+                    const wordY = rect.top + rect.height / 2;
+
+                    const dx = wordX - clickX;
+                    const dy = wordY - clickY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    // Physics math: Shockwave force based on distance
+                    const force = Math.max(100, 8000 / (dist + 50));
+                    const angle = Math.atan2(dy, dx);
+
+                    // Explosion vectors
+                    const moveX = Math.cos(angle) * force + (Math.random() - 0.5) * 500;
+                    const moveY = Math.sin(angle) * force + (Math.random() - 0.5) * 500 - 200; // Slight upward anti-gravity bias
+                    const rotX = (Math.random() - 0.5) * 1080;
+                    const rotY = (Math.random() - 0.5) * 1080;
+                    const rotZ = (Math.random() - 0.5) * 1080;
+
+                    // Delay based on distance to create a shockwave ripple effect
+                    const delay = dist * 1.2;
+
+                    setTimeout(() => {
+                        word.style.transform = `translate(${moveX}px, ${moveY}px) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg) scale(${Math.random() * 0.5 + 0.5})`;
+                        word.classList.add('shattered');
+                    }, delay);
+                });
+
+                // Show final message after words are shattered
+                setTimeout(() => {
+                    document.getElementById('oops').classList.add('show');
+                }, 3000);
+            });
+        });
+    </script>
+</body>
+
+</html>
