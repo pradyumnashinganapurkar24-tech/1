@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Pixel - 8-Bit Retro</title>
+    
+    
+<style>
+:root { --bg-dark: #111; --cabinet: #222; --bezel: #111; --text: #fff; --accent: #ffff00; }
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+body { background-color: var(--bg-dark); font-family: 'Press Start 2P', cursive; color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+#arcade-cabinet { background: var(--cabinet); padding: 2vmin; border-radius: 2vmin 2vmin 0 0; box-shadow: 0 2vmin 5vmin rgba(0,0,0,0.8); border: 4px solid var(--accent); max-height: 95vh; max-width: 95vw; display: flex; flex-direction: column; }
+#screen-bezel { background: var(--bezel); padding: 3vmin; border-radius: 3vmin; box-shadow: inset 0 0 3vmin rgba(0,0,0,1); border: 2px solid #222; flex-grow: 1; display: flex; justify-content: center; align-items: center; }
+#game-container { position: relative; width: 100%; max-height: 100%; aspect-ratio: 3/4; background: #000; overflow: hidden; border: 4px solid #000; }
+canvas { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+#scanlines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 10; }
+#ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; pointer-events: none; }
+#hud { display: none; justify-content: space-between; padding: 15px 30px; font-size: 16px; color: #fff; }
+#hud.active { display: flex; }
+.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; pointer-events: auto; }
+.overlay.active { display: flex; }
+h1 { font-size: 32px; line-height: 1.5; margin-bottom: 30px; text-shadow: 4px 4px 0 #444; }
+p { font-size: 14px; color: #ccc; margin-bottom: 40px; line-height: 2; }
+.flicker { animation: textFlicker 2s infinite; }
+@keyframes textFlicker { 0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { text-shadow: 4px 4px 0 #555, 0 0 20px var(--accent); } 20%, 24%, 55% { text-shadow: none; } }
+.retro-btn { background: transparent; border: 4px solid var(--accent); color: var(--accent); font-family: 'Press Start 2P', cursive; font-size: 18px; padding: 15px 30px; cursor: pointer; box-shadow: 4px 4px 0 #550; transition: all 0.1s; pointer-events: auto; }
+.retro-btn:hover { background: var(--accent); color: #000; box-shadow: 4px 4px 0 #ffa500; }
+.retro-btn:active { transform: translate(4px, 4px); box-shadow: 0 0 0 transparent; }
+.cabinet-controls { display: flex; justify-content: flex-end; margin-top: 20px; }
+.retro-btn.small { font-size: 10px; padding: 10px 15px; border-width: 2px; box-shadow: 2px 2px 0 #550; }
+
+</style>
+</head>
+<body>
+    <div id="arcade-cabinet">
+        <div id="screen-bezel">
+            <div id="game-container">
+                <canvas id="game-canvas"></canvas>
+                <div id="scanlines"></div>
+                <div id="ui-layer">
+                    <div id="hud">
+                        <div>SCORE<br><span id="scoreDisplay">0</span></div>
+                    </div>
+                    <div id="main-menu" class="overlay active">
+                        <h1 class="flicker" style="color: #ffff00;">FLAPPY PIXEL</h1>
+                        <p>PRESS KEYBOARD TO PLAY</p>
+                        <button id="startBtn" class="retro-btn">INSERT COIN</button>
+                    </div>
+                    <div id="game-over" class="overlay">
+                        <h1 style="color: #ff0000;">GAME OVER</h1>
+                        <p>SCORE: <span id="finalScore">0</span></p>
+                        <button id="retryBtn" class="retro-btn">CONTINUE?</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="cabinet-controls">
+            <button id="muteBtn" class="retro-btn small">AUDIO: ON</button>
+        </div>
+    </div>
+    
+<script>
+// --- 8-Bit Audio Engine ---
+class Chiptune {
+    constructor() { this.ctx = null; this.master = null; this.isMuted = false; this.init = false; }
+    setup() {
+        if (this.init) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+        this.master = this.ctx.createGain(); this.master.gain.value = 0.3;
+        this.master.connect(this.ctx.destination); this.init = true;
+    }
+    resume() { if (this.ctx) this.ctx.resume(); }
+    toggleMute() {
+        this.isMuted = !this.isMuted;
+        if (this.master) this.master.gain.value = this.isMuted ? 0 : 0.3;
+        return this.isMuted;
+    }
+    playFlap() {
+        if (!this.init || this.isMuted) return;
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.type = 'square'; osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.5, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        osc.connect(gain); gain.connect(this.master); osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+    }
+    playScore() {
+        if (!this.init || this.isMuted) return;
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.5, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        osc.connect(gain); gain.connect(this.master); osc.start(); osc.stop(this.ctx.currentTime + 0.2);
+    }
+    playHit() {
+        if (!this.init || this.isMuted) return;
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(10, this.ctx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.8, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+        osc.connect(gain); gain.connect(this.master); osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+    }
+}
+const audio = new Chiptune();
+
+// --- Game Logic ---
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 300; canvas.height = 400;
+
+class Game {
+    constructor() {
+        this.state = 'menu';
+        this.score = 0;
+        this.bird = { y: 200, vy: 0, r: 8 };
+        this.pipes = [];
+        this.pipeTimer = 0;
+        
+        window.addEventListener('keydown', e => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if(this.state === 'playing') { this.bird.vy = -300; audio.playFlap(); }
+            }
+        });
+
+        document.getElementById('startBtn').onclick = () => { audio.setup(); audio.resume(); this.startGame(); };
+        document.getElementById('retryBtn').onclick = () => { audio.resume(); this.startGame(); };
+        const muteBtn = document.getElementById('muteBtn');
+        muteBtn.onclick = () => { muteBtn.innerText = audio.toggleMute() ? "AUDIO: OFF" : "AUDIO: ON"; };
+
+        this.lastTime = performance.now();
+        requestAnimationFrame(this.loop.bind(this));
+    }
+
+    startGame() {
+        this.score = 0;
+        this.bird.y = 200; this.bird.vy = 0;
+        this.pipes = [];
+        this.pipeTimer = 0;
+        this.state = 'playing';
+        document.getElementById('scoreDisplay').innerText = this.score;
+        document.querySelectorAll('.overlay').forEach(el => el.classList.remove('active'));
+        document.getElementById('hud').classList.add('active');
+    }
+
+    loop(time) {
+        requestAnimationFrame(this.loop.bind(this));
+        const dt = Math.min((time - this.lastTime) / 1000, 0.1);
+        this.lastTime = time;
+
+        if (this.state === 'playing') {
+            // Bird physics
+            this.bird.vy += 1000 * dt; // Gravity
+            this.bird.y += this.bird.vy * dt;
+
+            // Pipes
+            this.pipeTimer += dt;
+            if(this.pipeTimer > 1.5) {
+                this.pipeTimer = 0;
+                const gapY = Math.random() * 200 + 100;
+                this.pipes.push({ x: 300, gapY: gapY, passed: false });
+            }
+
+            for(let i=this.pipes.length-1; i>=0; i--) {
+                let p = this.pipes[i];
+                p.x -= 150 * dt;
+                
+                // Collision
+                const pWidth = 40; const gapSize = 100;
+                if(100 + this.bird.r > p.x && 100 - this.bird.r < p.x + pWidth) {
+                    if(this.bird.y - this.bird.r < p.gapY - gapSize/2 || this.bird.y + this.bird.r > p.gapY + gapSize/2) {
+                        this.die();
+                    }
+                }
+                
+                // Score
+                if(!p.passed && p.x + pWidth < 100) {
+                    p.passed = true;
+                    this.score++;
+                    document.getElementById('scoreDisplay').innerText = this.score;
+                    audio.playScore();
+                }
+                
+                if(p.x < -pWidth) this.pipes.splice(i, 1);
+            }
+
+            // Floor / Ceiling
+            if(this.bird.y > 400 || this.bird.y < 0) this.die();
+        }
+
+        this.draw();
+    }
+
+    die() {
+        this.state = 'dead'; audio.playHit();
+        setTimeout(() => {
+            document.getElementById('finalScore').innerText = this.score;
+            document.getElementById('game-over').classList.add('active');
+        }, 1000);
+    }
+
+    draw() {
+        ctx.fillStyle = '#71c5cf'; ctx.fillRect(0, 0, canvas.width, canvas.height); // Sky
+        
+        if(this.state === 'playing' || this.state === 'dead') {
+            // Pipes
+            ctx.fillStyle = '#74bf2e';
+            const gapSize = 100; const pWidth = 40;
+            this.pipes.forEach(p => {
+                ctx.fillRect(p.x, 0, pWidth, p.gapY - gapSize/2);
+                ctx.fillRect(p.x, p.gapY + gapSize/2, pWidth, 400);
+                
+                // Pipe caps
+                ctx.fillStyle = '#558c22';
+                ctx.fillRect(p.x-2, p.gapY - gapSize/2 - 20, pWidth+4, 20);
+                ctx.fillRect(p.x-2, p.gapY + gapSize/2, pWidth+4, 20);
+                ctx.fillStyle = '#74bf2e';
+            });
+            
+            // Bird
+            ctx.save();
+            ctx.translate(100, this.bird.y);
+            ctx.rotate(Math.min(Math.PI/4, Math.max(-Math.PI/4, this.bird.vy * 0.005)));
+            ctx.fillStyle = '#f2b322';
+            ctx.fillRect(-this.bird.r, -this.bird.r, this.bird.r*2, this.bird.r*2); // Body
+            ctx.fillStyle = '#fff'; ctx.fillRect(2, -4, 4, 4); // Eye
+            ctx.fillStyle = '#000'; ctx.fillRect(4, -2, 2, 2); // Pupil
+            ctx.fillStyle = '#f25022'; ctx.fillRect(this.bird.r, 0, 6, 4); // Beak
+            ctx.restore();
+            
+            // Ground (animated)
+            ctx.fillStyle = '#ded895';
+            ctx.fillRect(0, 380, 300, 20);
+            ctx.fillStyle = '#73bf2e';
+            ctx.fillRect(0, 380, 300, 5);
+        }
+    }
+}
+window.onload = () => new Game();
+
+</script>
+</body>
+</html>
