@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>東京NEON — Sector 7 Hub</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;400;700&family=Black+Han+Sans&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --pink: #ff006e;
+            --cyan: #00f5d4;
+            --yellow: #ffe600;
+            --purple: #8338ec;
+            --bg-dark: #05010a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            cursor: none;
+            /* Hide default cursor */
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: #fff;
+            font-family: 'Noto Sans JP', sans-serif;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Glowing Cursor */
+        .cursor-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--cyan);
+            border-radius: 50%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 9999;
+            box-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan);
+            transform: translate(-50%, -50%);
+            transition: width 0.2s, height 0.2s, background 0.2s;
+        }
+
+        .cursor-trail {
+            width: 30px;
+            height: 30px;
+            border: 1px solid rgba(0, 245, 212, 0.5);
+            border-radius: 50%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 9998;
+            transform: translate(-50%, -50%);
+            transition: 0.1s ease-out;
+        }
+
+        /* CRT Scanline Overlay */
+        body::after {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 1000;
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+        }
+
+        /* Rain & Embers */
+        .atmosphere {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .raindrop {
+            position: absolute;
+            background: linear-gradient(to bottom, transparent, var(--cyan));
+            opacity: 0.2;
+            width: 1px;
+            animation: fall linear infinite;
+            transform: rotate(10deg);
+        }
+
+        @keyframes fall {
+            to {
+                transform: translateY(110vh) translateX(-20vh);
+            }
+        }
+
+        .ember {
+            position: absolute;
+            bottom: -20px;
+            background: var(--pink);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--pink), 0 0 20px var(--pink);
+            animation: floatUp linear infinite;
+            opacity: 0;
+        }
+
+        @keyframes floatUp {
+            0% {
+                transform: translateY(0) scale(1) translateX(0);
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 0.8;
+            }
+
+            80% {
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: translateY(-100vh) scale(0) translateX(50px);
+                opacity: 0;
+            }
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 30px 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            background: linear-gradient(to bottom, rgba(5, 1, 10, 0.9), transparent);
+        }
+
+        .logo {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: 1.8rem;
+            color: var(--pink);
+            text-shadow: 0 0 15px var(--pink);
+            letter-spacing: 2px;
+        }
+
+        .logo span {
+            color: var(--cyan);
+            text-shadow: 0 0 15px var(--cyan);
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            margin-left: 32px;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            transition: color 0.3s;
+            text-transform: uppercase;
+        }
+
+        .nav-links a:hover {
+            color: var(--cyan);
+            text-shadow: 0 0 10px var(--cyan);
+        }
+
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            perspective: 1200px;
+            overflow: hidden;
+        }
+
+        /* 3D Parallax Cityscape */
+        .city-container {
+            position: absolute;
+            bottom: 0;
+            width: 120vw;
+            left: -10vw;
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out, opacity 0.5s;
+            -webkit-mask-image: linear-gradient(to top, transparent 5%, black 40%);
+        }
+
+        .layer {
+            position: absolute;
+            bottom: 0;
+            display: flex;
+            align-items: flex-end;
+            width: 100%;
+            justify-content: center;
+            gap: 8px;
+            transform-style: preserve-3d;
+        }
+
+        .layer-bg {
+            transform: translateZ(-600px) translateY(100px);
+            filter: blur(4px) brightness(0.3);
+        }
+
+        .layer-mid {
+            transform: translateZ(-300px) translateY(50px);
+            filter: blur(2px) brightness(0.6);
+        }
+
+        .layer-fg {
+            transform: translateZ(0);
+            filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+        }
+
+        .building {
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .windows {
+            display: grid;
+            padding: 6px;
+            gap: 3px;
+            height: 100%;
+            width: 100%;
+            align-content: start;
+        }
+
+        .window {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 1px;
+        }
+
+        .window.on {
+            background: rgba(255, 220, 0, 0.8);
+            box-shadow: 0 0 8px rgba(255, 220, 0, 0.6);
+        }
+
+        .window.cyan {
+            background: rgba(0, 245, 212, 0.8);
+            box-shadow: 0 0 8px rgba(0, 245, 212, 0.6);
+        }
+
+        .window.pink {
+            background: rgba(255, 0, 110, 0.8);
+            box-shadow: 0 0 8px rgba(255, 0, 110, 0.6);
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 50;
+            margin-left: 10%;
+            max-width: 650px;
+            transition: opacity 0.5s;
+        }
+
+        .pre-title {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.9rem;
+            letter-spacing: 4px;
+            color: var(--cyan);
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px var(--cyan);
+        }
+
+        .pre-title span {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        h1 {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: clamp(3.5rem, 8vw, 7rem);
+            line-height: 0.95;
+            margin-bottom: 30px;
+        }
+
+        h1 .jp {
+            display: block;
+            font-size: 0.35em;
+            letter-spacing: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 8px;
+        }
+
+        h1 .main-text {
+            color: #fff;
+            text-shadow: 4px 0px var(--pink), -4px 0px var(--cyan);
+        }
+
+        p.desc {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.7;
+            margin-bottom: 40px;
+            max-width: 480px;
+        }
+
+        /* Glitch Buttons */
+        .cta-group {
+            display: flex;
+            gap: 20px;
+        }
+
+        button.btn-neon {
+            background: transparent;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+
+        .btn-neon {
+            padding: 16px 36px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            cursor: none;
+            border-radius: 0;
+            outline: none;
+        }
+
+        .btn-pink {
+            border: 2px solid var(--pink);
+            color: var(--pink);
+            text-shadow: 0 0 10px var(--pink);
+            box-shadow: inset 0 0 0 var(--pink), 0 0 20px rgba(255, 0, 110, 0.2);
+        }
+
+        .btn-cyan {
+            border: 2px solid var(--cyan);
+            color: var(--cyan);
+            text-shadow: 0 0 10px var(--cyan);
+            box-shadow: inset 0 0 0 var(--cyan), 0 0 20px rgba(0, 245, 212, 0.2);
+        }
+
+        .btn-neon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-neon:hover::before {
+            left: 100%;
+        }
+
+        .btn-pink:hover {
+            background: var(--pink);
+            color: #fff;
+            box-shadow: 0 0 40px var(--pink);
+            text-shadow: none;
+            transform: scale(1.05);
+        }
+
+        .btn-cyan:hover {
+            background: var(--cyan);
+            color: #000;
+            box-shadow: 0 0 40px var(--cyan);
+            text-shadow: none;
+            transform: scale(1.05);
+        }
+
+        /* Playful Terminals Section */
+        .terminals {
+            padding: 120px 60px;
+            background: linear-gradient(to bottom, #05010a, #0a0118);
+            position: relative;
+            z-index: 60;
+            transition: opacity 0.5s;
+        }
+
+        .terminals-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 60px;
+        }
+
+        .terminals-title {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: 3rem;
+            letter-spacing: 2px;
+        }
+
+        .terminal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            perspective: 1000px;
+        }
+
+        .terminal-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 40px;
+            position: relative;
+            border-radius: 8px;
+            transform-style: preserve-3d;
+            transition: border-color 0.4s, box-shadow 0.4s, transform 0.1s;
+        }
+
+        .terminal-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent);
+            box-shadow: 0 0 15px var(--accent);
+            transition: width 0.3s ease;
+        }
+
+        .terminal-card:hover::before {
+            width: 100%;
+            opacity: 0.1;
+        }
+
+        .terminal-card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+            z-index: 10;
+        }
+
+        .terminal-card:active {
+            transform: scale3d(0.95, 0.95, 0.95) !important;
+            border-color: var(--accent);
+        }
+
+        .card-content {
+            transform: translateZ(30px);
+            pointer-events: none;
+        }
+
+        .terminal-id {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 3px;
+            color: var(--accent);
+            margin-bottom: 16px;
+            text-transform: uppercase;
+        }
+
+        .terminal-name {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+        }
+
+        .terminal-desc {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.5);
+            line-height: 1.6;
+            min-height: 60px;
+        }
+
+        .status-indicator {
+            margin-top: 25px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.9rem;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent);
+            animation: pulse 2s infinite;
+        }
+
+        /* --- GAME UI STYLES --- */
+        #game-ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(5, 1, 10, 0.95);
+        }
+
+        #game-ui.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .score-board {
+            position: absolute;
+            top: 30px;
+            left: 40px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.5rem;
+            color: var(--cyan);
+            z-index: 10;
+            text-shadow: 0 0 10px var(--cyan);
+        }
+
+        #game-over {
+            position: absolute;
+            z-index: 20;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 60px;
+            border: 2px solid var(--pink);
+            box-shadow: 0 0 30px var(--pink);
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            transform: scale(0.8);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #game-over:not(.hidden) {
+            transform: scale(1);
+        }
+
+        #game-over h2 {
+            font-family: 'Black Han Sans', sans-serif;
+            color: var(--pink);
+            font-size: 4rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px var(--pink);
+            letter-spacing: 4px;
+        }
+
+        #game-over p {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.8rem;
+            margin-bottom: 40px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .btn-group-vertical {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .hidden { display: none !important; }
+        .fade-out { opacity: 0; pointer-events: none; }
+    </style>
+</head>
+
+<body>
+
+    <div class="cursor-dot" id="cursor-dot"></div>
+    <div class="cursor-trail" id="cursor-trail"></div>
+
+    <div class="atmosphere" id="atmosphere"></div>
+
+    <nav>
+        <div class="logo">東京<span>NEON</span></div>
+        <div class="nav-links">
+            <a href="#terminals">Arcade</a>
+            <a href="#">Radio</a>
+            <a href="#">Lore</a>
+            <a href="#">Connect</a>
+        </div>
+    </nav>
+
+    <!-- Game UI Overlay -->
+    <div id="game-ui">
+        <div class="score-board">SCORE: <span id="score">0</span> | HIGH: <span id="high-score">0</span></div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="game-over" class="hidden">
+            <h2>SYSTEM FAILURE</h2>
+            <p>SCORE: <span id="final-score">0</span></p>
+            <div class="btn-group-vertical">
+                <button id="btn-restart" class="btn-neon btn-cyan">REBOOT GRID</button>
+                <button id="btn-menu" class="btn-neon btn-pink">EXIT TO MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <section class="hero" id="hero">
+        <div class="city-container" id="city-container">
+            <div class="layer layer-bg" id="l-bg"></div>
+            <div class="layer layer-mid" id="l-mid"></div>
+            <div class="layer layer-fg" id="l-fg"></div>
+        </div>
+
+        <div class="hero-content">
+            <p class="pre-title">SYS.LOC // SECTOR 07 <span>_</span></p>
+            <h1>
+                <span class="jp">デジタルプレイグラウンド</span>
+                <span class="main-text">THE GRID</span>
+            </h1>
+            <p class="desc">Welcome to the underground digital playground. Plug into the neural net, hit the arcade, or
+                tune your frequencies to the midnight synth radio.</p>
+            <div class="cta-group">
+                <button id="btn-start-game" class="btn-neon btn-pink">Initialize</button>
+                <a href="#terminals" class="btn-neon btn-cyan">Enter Vault</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="terminals" id="terminals">
+        <div class="terminals-header">
+            <div class="terminals-title">ACCESS TERMINALS</div>
+        </div>
+        <div class="terminal-grid">
+
+            <div class="terminal-card" style="--accent:#ff006e;">
+                <div class="card-content">
+                    <div class="terminal-id">MOD-01 // AUDIO</div>
+                    <div class="terminal-name">Synthwave Radio</div>
+                    <div class="terminal-desc">Tune into the illegal midnight frequencies of Sector 7. Lo-fi beats and
+                        heavy synth lines.</div>
+                    <div class="status-indicator">
+                        <div class="status-dot"></div> [ BROADCASTING ]
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-card" id="card-neon-drifter" style="--accent:#00f5d4; cursor: none;">
+                <div class="card-content">
+                    <div class="terminal-id">MOD-02 // GAME</div>
+                    <div class="terminal-name">Neon Drifter</div>
+                    <div class="terminal-desc">Holographic street racing simulation. High scores are wiped at dawn. Do
+                        you have what it takes?</div>
+                    <div class="status-indicator">
+                        <div class="status-dot"></div> [ INSERT COIN ]
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-card" style="--accent:#ffe600;">
+                <div class="card-content">
+                    <div class="terminal-id">MOD-03 // ARCHIVE</div>
+                    <div class="terminal-name">Alleyway Lore</div>
+                    <div class="terminal-desc">Decrypt the encrypted data logs left behind by rogue hackers and digital
+                        ghosts.</div>
+                    <div class="status-indicator">
+                        <div class="status-dot"></div> [ DECRYPTING... ]
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-card" style="--accent:#8338ec;">
+                <div class="card-content">
+                    <div class="terminal-id">MOD-04 // USER</div>
+                    <div class="terminal-name">Avatar Creator</div>
+                    <div class="terminal-desc">Design your digital footprint. Customize your neon ghost before jacking
+                        into the grid.</div>
+                    <div class="status-indicator">
+                        <div class="status-dot"></div> [ SYSTEM ONLINE ]
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <script>
+        // 0. Custom Cursor Logic
+        const dot = document.getElementById('cursor-dot');
+        const trail = document.getElementById('cursor-trail');
+        document.addEventListener('mousemove', (e) => {
+            dot.style.left = e.clientX + 'px';
+            dot.style.top = e.clientY + 'px';
+            trail.style.left = e.clientX + 'px';
+            trail.style.top = e.clientY + 'px';
+        });
+
+        const interactiveElements = document.querySelectorAll('a, button, .terminal-card');
+        interactiveElements.forEach(el => {
+            el.addEventListener('mouseenter', () => {
+                dot.style.transform = 'translate(-50%, -50%) scale(2)';
+                dot.style.background = 'var(--pink)';
+                trail.style.borderColor = 'rgba(255, 0, 110, 0.8)';
+            });
+            el.addEventListener('mouseleave', () => {
+                dot.style.transform = 'translate(-50%, -50%) scale(1)';
+                dot.style.background = 'var(--cyan)';
+                trail.style.borderColor = 'rgba(0, 245, 212, 0.5)';
+            });
+        });
+
+        // 1. Atmosphere Generator
+        const atmoContainer = document.getElementById('atmosphere');
+        for (let i = 0; i < 80; i++) {
+            const drop = document.createElement('div');
+            drop.className = 'raindrop';
+            drop.style.cssText = `
+    left: ${Math.random() * 120 - 10}vw; top: -${Math.random() * 100}px;
+    height: ${Math.random() * 100 + 40}px; 
+    animation-duration: ${Math.random() * 0.6 + 0.3}s; animation-delay: ${Math.random() * 2}s; 
+  `;
+            atmoContainer.appendChild(drop);
+        }
+        for (let i = 0; i < 40; i++) {
+            const ember = document.createElement('div');
+            ember.className = 'ember';
+            const size = Math.random() * 3 + 1;
+            ember.style.cssText = `
+    left: ${Math.random() * 100}vw; width: ${size}px; height: ${size}px;
+    animation-duration: ${Math.random() * 5 + 5}s; animation-delay: ${Math.random() * 10}s;
+  `;
+            atmoContainer.appendChild(ember);
+        }
+
+        // 2. Multi-Layer 3D City Generator
+        const colors = ['#0c0818', '#08100c', '#0a0a14', '#100812'];
+        function generateCityLayer(layerId, count, minW, maxW, minH, maxH, lightChance) {
+            const layer = document.getElementById(layerId);
+            for (let i = 0; i < count; i++) {
+                const w = Math.random() * (maxW - minW) + minW;
+                const h = Math.random() * (maxH - minH) + minH;
+                const b = document.createElement('div');
+                b.className = 'building';
+                b.style.cssText = `width: ${w}px; height: ${h}px; background: ${colors[Math.floor(Math.random() * colors.length)]};`;
+
+                const rows = Math.floor(h / 18);
+                const cols = Math.floor(w / 12);
+                const winContainer = document.createElement('div');
+                winContainer.className = 'windows';
+                winContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                winContainer.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+                for (let j = 0; j < rows * cols; j++) {
+                    const wDiv = document.createElement('div');
+                    const r2 = Math.random();
+                    let cName = 'window';
+                    if (r2 > lightChance) { }
+                    else if (r2 > lightChance * 0.3) { cName += ' on'; }
+                    else if (r2 > lightChance * 0.1) { cName += ' cyan'; }
+                    else { cName += ' pink'; }
+                    wDiv.className = cName;
+                    winContainer.appendChild(wDiv);
+                }
+                b.appendChild(winContainer);
+                layer.appendChild(b);
+            }
+        }
+        generateCityLayer('l-bg', 35, 40, 100, 300, 700, 0.4);
+        generateCityLayer('l-mid', 25, 60, 120, 200, 500, 0.3);
+        generateCityLayer('l-fg', 15, 80, 180, 100, 350, 0.2);
+
+        // 3. Interactive Parallax City
+        const cityContainer = document.getElementById('city-container');
+        document.addEventListener('mousemove', (e) => {
+            if(gameActive) return; // Disable parallax during game
+            const x = (e.clientX / window.innerWidth - 0.5) * 2;
+            const y = (e.clientY / window.innerHeight - 0.5) * 2;
+            cityContainer.style.transform = `rotateY(${x * 6}deg) rotateX(${-y * 3}deg)`;
+        });
+
+        // 4. Interactive 3D Card Tilt
+        const cards = document.querySelectorAll('.terminal-card');
+        cards.forEach(card => {
+            card.addEventListener('mousemove', e => {
+                if(gameActive) return;
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left; const y = e.clientY - rect.top;
+                const centerX = rect.width / 2; const centerY = rect.height / 2;
+                const rotateX = ((y - centerY) / centerY) * -10;
+                const rotateY = ((x - centerX) / centerX) * 10;
+                card.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+            });
+
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = `rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                card.style.transition = 'transform 0.5s ease, box-shadow 0.5s ease, border-color 0.5s ease';
+            });
+            card.addEventListener('mouseenter', () => { card.style.transition = 'transform 0.05s linear'; });
+        });
+
+        /* =========================================
+           NEON DRIFTER: GAME LOGIC
+           ========================================= */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let gameActive = false;
+        let animationId;
+
+        // Pseudo-3D Config
+        const FOV = 300;
+        let speed = 12;
+        let score = 0;
+        let frameCount = 0;
+        let highScore = localStorage.getItem('neonHighScore') || 0;
+        document.getElementById('high-score').innerText = highScore;
+
+        let player = {
+            x: 0, // Lanes: -1 (left), 0 (center), 1 (right)
+            targetX: 0,
+            z: 20, // Distance from camera
+            width: 70,
+            height: 35
+        };
+
+        let gridLines = [];
+        let obstacles = [];
+        let collectibles = [];
+        let particles = [];
+
+        // Game Controls
+        document.addEventListener('keydown', (e) => {
+            if(!gameActive) return;
+            if(e.key === 'ArrowLeft' || e.key === 'a') player.targetX = Math.max(-1, player.targetX - 1);
+            if(e.key === 'ArrowRight' || e.key === 'd') player.targetX = Math.min(1, player.targetX + 1);
+        });
+
+        // Mouse/Touch steering mapping
+        canvas.addEventListener('mousemove', (e) => {
+            if(!gameActive) return;
+            const w = window.innerWidth;
+            if(e.clientX < w/3) player.targetX = -1;
+            else if(e.clientX > 2*w/3) player.targetX = 1;
+            else player.targetX = 0;
+        });
+
+        function initGame() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            score = 0;
+            speed = 15;
+            frameCount = 0;
+            player.x = 0;
+            player.targetX = 0;
+            obstacles = [];
+            collectibles = [];
+            particles = [];
+            gridLines = [];
+            
+            // Generate initial grid lines
+            for(let i=0; i<30; i++) {
+                gridLines.push({ z: i * 60 });
+            }
+
+            gameActive = true;
+            document.getElementById('score').innerText = '0';
+            document.getElementById('game-over').classList.add('hidden');
+            
+            if(animationId) cancelAnimationFrame(animationId);
+            gameLoop();
+        }
+
+        // 3D to 2D projection
+        function project(x, y, z) {
+            const scale = FOV / Math.max(1, z);
+            const px = x * scale + canvas.width / 2;
+            const py = y * scale + canvas.height / 2;
+            return { px, py, scale };
+        }
+
+        function drawGrid() {
+            const horizonY = canvas.height / 2 - 50;
+            
+            // Draw distant neon glow
+            const grad = ctx.createLinearGradient(0, horizonY - 100, 0, horizonY + 150);
+            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            grad.addColorStop(0.5, 'rgba(131, 56, 236, 0.5)'); // Purple glow
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, horizonY - 100, canvas.width, 250);
+
+            ctx.strokeStyle = 'rgba(0, 245, 212, 0.4)';
+            ctx.lineWidth = 2;
+            
+            // Perspective lane lines
+            for(let i = -3; i <= 3; i++) {
+                // Focus slightly above horizon for better depth
+                const x1 = i * 400 + canvas.width / 2;
+                const y1 = canvas.height + 200;
+                const x2 = i * 20 + canvas.width / 2;
+                const y2 = horizonY;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+            
+            // Horizontal depth lines
+            for(let i = gridLines.length - 1; i >= 0; i--) {
+                let l = gridLines[i];
+                l.z -= speed;
+                
+                if(l.z <= 5) {
+                    gridLines.splice(i, 1);
+                    gridLines.push({ z: 1800 });
+                } else {
+                    const p = project(0, 300, l.z); // y=300 represents floor depth
+                    ctx.beginPath();
+                    ctx.moveTo(0, p.py);
+                    ctx.lineTo(canvas.width, p.py);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function spawnEntities() {
+            // Spawn rate increases slightly over time
+            const spawnChance = 0.05 + (frameCount * 0.00001);
+            
+            if(Math.random() < spawnChance) {
+                // 70% obstacle, 30% collectible
+                if(Math.random() < 0.7) {
+                    const lane = Math.floor(Math.random() * 3) - 1;
+                    obstacles.push({ x: lane, z: 2000 });
+                } else {
+                    const lane = Math.floor(Math.random() * 3) - 1;
+                    collectibles.push({ x: lane, z: 2000, type: Math.random() > 0.5 ? 'cyan' : 'pink' });
+                }
+            }
+        }
+
+        function drawPlayer() {
+            // Smooth steering
+            player.x += (player.targetX - player.x) * 0.2;
+            
+            // Project player coordinates
+            const laneWidth = 300; 
+            const xOffset = player.x * laneWidth;
+            const p = project(xOffset, 150, player.z); // y=150 is hovering above floor
+            
+            const w = player.width * p.scale;
+            const h = player.height * p.scale;
+            
+            // Cyber-bike / Ship shape
+            ctx.fillStyle = '#00f5d4';
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = '#00f5d4';
+            
+            ctx.beginPath();
+            ctx.moveTo(p.px, p.py - h/2); // Nose
+            ctx.lineTo(p.px + w/2, p.py + h/2); // Right wing
+            ctx.lineTo(p.px, p.py + h/4); // Engine indent
+            ctx.lineTo(p.px - w/2, p.py + h/2); // Left wing
+            ctx.closePath();
+            ctx.fill();
+            
+            // Engine glow
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.arc(p.px, p.py + h/3, w/6, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function updateAndDrawEntities() {
+            const laneWidth = 300;
+
+            // Obstacles (Red Firewalls)
+            for(let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.z -= speed;
+                
+                if(obs.z < 5) {
+                    obstacles.splice(i, 1);
+                    score += 10; // Passing an obstacle gives small points
+                    document.getElementById('score').innerText = score;
+                    continue;
+                }
+                
+                const px = obs.x * laneWidth;
+                const p = project(px, 200, obs.z); // y=200 stands on the floor
+                const w = 180 * p.scale;
+                const h = 200 * p.scale;
+                
+                ctx.strokeStyle = '#ff006e';
+                ctx.fillStyle = 'rgba(255, 0, 110, 0.3)';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ff006e';
+                
+                // Draw firewall block
+                ctx.beginPath();
+                ctx.rect(p.px - w/2, p.py - h, w, h);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Inner grid pattern for firewall
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(p.px - w/2, p.py - h/2);
+                ctx.lineTo(p.px + w/2, p.py - h/2);
+                ctx.moveTo(p.px, p.py - h);
+                ctx.lineTo(p.px, p.py);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                
+                // Collision Detection
+                if(obs.z < player.z + 20 && obs.z > player.z - 20) {
+                    if(Math.abs(player.x - obs.x) < 0.5) {
+                        gameOver();
+                        return; // Stop processing to prevent cascade
+                    }
+                }
+            }
+            
+            // Collectibles (Data Fragments)
+            for(let i = collectibles.length - 1; i >= 0; i--) {
+                let col = collectibles[i];
+                col.z -= speed;
+                
+                if(col.z < 5) {
+                    collectibles.splice(i, 1);
+                    continue;
+                }
+                
+                const px = col.x * laneWidth;
+                // Bobbing animation
+                const hoverY = 150 + Math.sin(frameCount * 0.1 + i) * 30;
+                const p = project(px, hoverY, col.z); 
+                const r = 30 * p.scale;
+                
+                const color = col.type === 'cyan' ? '#00f5d4' : '#ffe600';
+                ctx.fillStyle = color;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = color;
+                
+                // Draw glowing diamond
+                ctx.beginPath();
+                ctx.moveTo(p.px, p.py - r);
+                ctx.lineTo(p.px + r, p.py);
+                ctx.lineTo(p.px, p.py + r);
+                ctx.lineTo(p.px - r, p.py);
+                ctx.closePath();
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                // Collision Detection
+                if(col.z < player.z + 30 && col.z > player.z - 30) {
+                    if(Math.abs(player.x - col.x) < 0.5) {
+                        collectibles.splice(i, 1);
+                        score += 100;
+                        document.getElementById('score').innerText = score;
+                        
+                        // Particle explosion
+                        for(let j=0; j<15; j++) {
+                            particles.push({
+                                x: p.px, y: p.py,
+                                vx: (Math.random()-0.5)*15,
+                                vy: (Math.random()-0.5)*15,
+                                life: 1,
+                                color: color
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateAndDrawParticles() {
+            for(let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.04; // Fade out speed
+                
+                if(p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function gameLoop() {
+            if(!gameActive) return;
+            frameCount++;
+            
+            // Clear canvas entirely
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Gradually increase speed
+            speed += 0.002; 
+            
+            drawGrid();
+            spawnEntities();
+            updateAndDrawEntities();
+            if(gameActive) {
+                drawPlayer();
+            }
+            updateAndDrawParticles();
+            
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            
+            // Massive particle explosion on death
+            const xOffset = player.x * 300;
+            const p = project(xOffset, 150, player.z);
+            for(let j=0; j<50; j++) {
+                particles.push({
+                    x: p.px, y: p.py,
+                    vx: (Math.random()-0.5)*30,
+                    vy: (Math.random()-0.5)*30,
+                    life: 1,
+                    color: '#ff006e'
+                });
+            }
+            
+            // Draw death particles before stopping
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            updateAndDrawEntities();
+            updateAndDrawParticles();
+            
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            
+            if(score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonHighScore', highScore);
+                document.getElementById('high-score').innerText = highScore;
+            }
+        }
+
+        // Handle Resizing
+        window.addEventListener('resize', () => {
+            if(gameActive) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        });
+
+        // UI Interactions to Start/Stop Game
+        function transitionToGame() {
+            // Hide main menu UI
+            document.querySelector('.hero-content').classList.add('fade-out');
+            document.getElementById('terminals').classList.add('fade-out');
+            document.getElementById('city-container').classList.add('fade-out');
+            
+            // Show Game UI
+            document.getElementById('game-ui').classList.add('active');
+            
+            // Slight delay to allow fade transition
+            setTimeout(initGame, 500);
+        }
+
+        // Click "Initialize" in Hero
+        document.getElementById('btn-start-game').addEventListener('click', transitionToGame);
+
+        // Click "Neon Drifter" Terminal Card
+        document.getElementById('card-neon-drifter').addEventListener('click', () => {
+            window.scrollTo({top: 0, behavior: 'smooth'});
+            setTimeout(transitionToGame, 300);
+        });
+
+        // Game Over Buttons
+        document.getElementById('btn-restart').addEventListener('click', initGame);
+
+        document.getElementById('btn-menu').addEventListener('click', () => {
+            document.getElementById('game-ui').classList.remove('active');
+            document.querySelector('.hero-content').classList.remove('fade-out');
+            document.getElementById('terminals').classList.remove('fade-out');
+            document.getElementById('city-container').classList.remove('fade-out');
+        });
+    </script>
+</body>
+
+</html>
