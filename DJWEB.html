@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRID//ARCH — Cyberpunk City Design</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=VT323&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --hot: #ff0080;
+            --electric: #00ffff;
+            --volt: #aaff00;
+            --dark: #000510;
+            --panel: #040d1a;
+        }
+
+        body {
+            background: var(--dark);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Scanlines */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.15) 2px, rgba(0, 0, 0, 0.15) 4px);
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        /* HUD lines */
+        .hud-tl,
+        .hud-tr,
+        .hud-bl,
+        .hud-br {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            z-index: 200;
+        }
+
+        .hud-tl {
+            top: 20px;
+            left: 20px;
+            border-top: 2px solid var(--hot);
+            border-left: 2px solid var(--hot);
+        }
+
+        .hud-tr {
+            top: 20px;
+            right: 20px;
+            border-top: 2px solid var(--electric);
+            border-right: 2px solid var(--electric);
+        }
+
+        .hud-bl {
+            bottom: 20px;
+            left: 20px;
+            border-bottom: 2px solid var(--volt);
+            border-left: 2px solid var(--volt);
+        }
+
+        .hud-br {
+            bottom: 20px;
+            right: 20px;
+            border-bottom: 2px solid var(--hot);
+            border-right: 2px solid var(--hot);
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 18px 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            background: rgba(4, 13, 26, 0.9);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+        }
+
+        .logo {
+            font-family: 'VT323', monospace;
+            font-size: 1.8rem;
+            color: var(--electric);
+            text-shadow: 0 0 10px var(--electric);
+        }
+
+        .logo span {
+            color: var(--hot);
+            text-shadow: 0 0 10px var(--hot);
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.5);
+            text-decoration: none;
+            margin-left: 28px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: all 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--electric);
+        }
+
+        .status {
+            font-family: 'VT323', monospace;
+            font-size: 0.9rem;
+            color: var(--volt);
+            letter-spacing: 1px;
+        }
+
+        .content {
+            position: relative;
+            z-index: 10;
+        }
+
+        .hero {
+            min-height: 100vh;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            padding: 100px 60px;
+        }
+
+        /* City grid 3D */
+        .city-3d {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            perspective: 1200px;
+            overflow: hidden;
+        }
+
+        .city-grid {
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            transform: rotateX(30deg) rotateZ(-10deg);
+            animation: cityDrift 15s linear infinite;
+        }
+
+        @keyframes cityDrift {
+            from {
+                transform: rotateX(30deg) rotateZ(-10deg) translateZ(0)
+            }
+
+            to {
+                transform: rotateX(30deg) rotateZ(-10deg) translateZ(200px)
+            }
+        }
+
+        .grid-line-h,
+        .grid-line-v {
+            position: absolute;
+            background: rgba(0, 255, 255, 0.08);
+        }
+
+        .grid-line-h {
+            left: 0;
+            right: 0;
+            height: 1px;
+        }
+
+        .grid-line-v {
+            top: 0;
+            bottom: 0;
+            width: 1px;
+        }
+
+        .tower {
+            position: absolute;
+            bottom: 0;
+            background: var(--tbg);
+            box-shadow: 0 0 20px var(--tglow);
+        }
+
+        .tower-window-row {
+            display: flex;
+            gap: 2px;
+            padding: 4px;
+        }
+
+        .tw {
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 220, 0, 0.7);
+        }
+
+        .tw.off {
+            background: transparent;
+        }
+
+        .tw.red {
+            background: rgba(255, 0, 128, 0.8);
+        }
+
+        .tw.blue {
+            background: rgba(0, 255, 255, 0.8);
+        }
+
+        .hero-text {
+            position: relative;
+            z-index: 5;
+            max-width: 580px;
+        }
+
+        .sys-badge {
+            font-family: 'VT323', monospace;
+            font-size: 1.1rem;
+            color: var(--volt);
+            letter-spacing: 3px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sys-badge::before {
+            content: '[SYS]';
+            color: var(--hot);
+            font-size: 0.9rem;
+        }
+
+        h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: clamp(3rem, 6vw, 5.5rem);
+            font-weight: 700;
+            line-height: 0.95;
+            margin-bottom: 20px;
+            letter-spacing: -1px;
+        }
+
+        h1 .hot {
+            color: var(--hot);
+            text-shadow: 0 0 20px var(--hot);
+        }
+
+        h1 .elec {
+            color: var(--electric);
+            text-shadow: 0 0 20px var(--electric);
+        }
+
+        p.brief {
+            font-size: 1rem;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.55);
+            line-height: 1.7;
+            margin-bottom: 40px;
+            border-left: 2px solid var(--electric);
+            padding-left: 20px;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .btn-cyber {
+            padding: 14px 32px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-decoration: none;
+            transition: all 0.3s;
+            clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+        }
+
+        .btn-hot {
+            background: var(--hot);
+            color: #000;
+        }
+
+        .btn-hot:hover {
+            box-shadow: 0 0 40px var(--hot);
+            background: #ff3399;
+        }
+
+        .btn-elec {
+            background: transparent;
+            border: 1px solid var(--electric);
+            color: var(--electric);
+        }
+
+        .btn-elec:hover {
+            background: rgba(0, 255, 255, 0.1);
+        }
+
+        .data-strip {
+            display: flex;
+            gap: 40px;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(0, 255, 255, 0.1);
+        }
+
+        .data-item {
+            font-family: 'VT323', monospace;
+        }
+
+        .data-val {
+            font-size: 1.8rem;
+            color: var(--electric);
+        }
+
+        .data-key {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.3);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .projects {
+            padding: 80px 60px;
+            background: var(--panel);
+        }
+
+        .sec-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+        }
+
+        .sec-title {
+            font-family: 'VT323', monospace;
+            font-size: 1.8rem;
+            color: var(--electric);
+        }
+
+        .sec-count {
+            font-family: 'VT323', monospace;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 1rem;
+        }
+
+        .proj-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+        }
+
+        .proj {
+            background: var(--dark);
+            padding: 30px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s;
+            overflow: hidden;
+        }
+
+        .proj::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.5s;
+        }
+
+        .proj:hover::before {
+            transform: translateX(0);
+        }
+
+        .proj:hover {
+            background: #020c1a;
+        }
+
+        .proj-id {
+            font-family: 'VT323', monospace;
+            font-size: 1.2rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+
+        .proj-name {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .proj-desc {
+            font-size: 0.82rem;
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: 300;
+            line-height: 1.6;
+        }
+
+        .proj-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 16px;
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        .proj-status::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 6px var(--accent);
+        }
+
+        /* Wobble Animations */
+        @keyframes neonWobble {
+            0% { transform: scale(1) translate(0,0); filter: brightness(1) hue-rotate(0deg); }
+            25% { transform: scale(1.5) translate(-2px,2px); filter: brightness(3) hue-rotate(90deg); box-shadow: 0 0 20px #fff; }
+            50% { transform: scale(0.8) translate(2px,-2px); filter: brightness(0.5) hue-rotate(-90deg); }
+            75% { transform: scale(1.2) translate(-2px,-2px); filter: brightness(2) hue-rotate(180deg); box-shadow: 0 0 15px #fff; }
+            100% { transform: scale(1) translate(0,0); filter: brightness(1) hue-rotate(0deg); }
+        }
+        
+        .wobble-light {
+            animation: neonWobble 0.3s ease-out;
+        }
+
+        @keyframes screenWobble {
+            0% { transform: translate(0, 0) scale(1); filter: contrast(1); }
+            20% { transform: translate(-10px, 5px) scale(1.02); filter: contrast(1.5) hue-rotate(10deg); }
+            40% { transform: translate(10px, -5px) scale(0.98); filter: contrast(0.8) hue-rotate(-10deg); }
+            60% { transform: translate(-5px, -10px) scale(1.01); filter: contrast(1.2) hue-rotate(5deg); }
+            80% { transform: translate(5px, 10px) scale(0.99); filter: contrast(0.9) hue-rotate(-5deg); }
+            100% { transform: translate(0, 0) scale(1); filter: contrast(1); }
+        }
+
+        .wobble-screen {
+            animation: screenWobble 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="city-3d" id="city3d"></div>
+    <script>
+        // City grid
+        const city = document.getElementById('city3d');
+        // Grid lines
+        for (let i = 0; i < 20; i++) {
+            const h = document.createElement('div'); h.className = 'grid-line-h'; h.style.top = (i * 6) + '%'; city.appendChild(h);
+            const v = document.createElement('div'); v.className = 'grid-line-v'; v.style.left = (i * 6) + '%'; city.appendChild(v);
+        }
+        // Towers
+        for (let i = 0; i < 20; i++) {
+            const t = document.createElement('div'); t.className = 'tower';
+            const w = Math.random() * 50 + 20; const h = Math.random() * 400 + 100;
+            const colors = ['rgba(255,0,128,0.08)', 'rgba(0,255,255,0.08)', 'rgba(170,255,0,0.06)'];
+            const glows = ['rgba(255,0,128,0.15)', 'rgba(0,255,255,0.15)', 'rgba(170,255,0,0.1)'];
+            const ci = Math.floor(Math.random() * 3);
+            t.style.cssText = `width:${w}px;height:${h}px;left:${5 + i * 4.5}%;--tbg:${colors[ci]};--tglow:${glows[ci]};`;
+            const rows = Math.floor(h / 12);
+            for (let r = 0; r < rows; r++) {
+                const row = document.createElement('div'); row.className = 'tower-window-row';
+                const cols = Math.floor(w / 8);
+                for (let c = 0; c < cols; c++) {
+                    const w2 = document.createElement('div');
+                    const rnd = Math.random();
+                    w2.className = 'tw' + (rnd < 0.25 ? ' off' : rnd < 0.6 ? '' : rnd < 0.8 ? ' red' : ' blue');
+                    row.appendChild(w2);
+                }
+                t.appendChild(row);
+            }
+            city.appendChild(t);
+        }
+
+        // --- Audio Visualizer & DJ Logic ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64; // Gives 32 frequency bins
+        analyser.connect(audioCtx.destination);
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        // Setup Visualizer Loop
+        function visualize() {
+            requestAnimationFrame(visualize);
+            analyser.getByteFrequencyData(dataArray);
+            
+            const towers = document.querySelectorAll('.tower');
+            towers.forEach((tower, i) => {
+                // Map the bins to the towers
+                const freqValue = dataArray[i] || 0; 
+                
+                // Scale brightness from 1 to 4 based on frequency amplitude (0-255)
+                const brightness = 1 + (freqValue / 255) * 3;
+                // Scale glow size
+                const glowIntensity = (freqValue / 255);
+                
+                tower.style.filter = `brightness(${brightness})`;
+                
+                if (glowIntensity > 0.05) {
+                    // Make it glow intensely white/bright when sound is loud
+                    tower.style.boxShadow = `0 0 ${20 + glowIntensity * 60}px var(--tglow), 0 0 ${glowIntensity * 30}px #fff`;
+                } else {
+                    tower.style.boxShadow = `0 0 20px var(--tglow)`;
+                }
+            });
+        }
+        
+        // Start visualizer loop once towers are in the DOM
+        setTimeout(visualize, 100);
+        
+        document.addEventListener('mousedown', (e) => {
+            const tower = e.target.closest('.tower');
+            if (!tower) return; // Only trigger when clicking a building!
+            
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const now = audioCtx.currentTime;
+            const nx = e.clientX / window.innerWidth;
+            const ny = e.clientY / window.innerHeight;
+            
+            // Audio Synthesis (DJ Wub / Scratch)
+            const osc = audioCtx.createOscillator();
+            osc.type = Math.random() > 0.5 ? 'sawtooth' : 'square';
+            
+            // Pitch based on Y
+            const baseFreq = 50 + (1 - ny) * 800;
+            osc.frequency.setValueAtTime(baseFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.05, now + 0.4);
+            
+            // DJ Filter Sweep based on X
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            const filterFreq = 200 + nx * 6000;
+            filter.frequency.setValueAtTime(filterFreq, now);
+            filter.frequency.exponentialRampToValueAtTime(100, now + 0.4);
+            filter.Q.value = 15; // High resonance for wub sound
+            
+            // Gain envelope
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.8, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            
+            osc.connect(filter);
+            filter.connect(gain);
+            
+            // Connect to analyser instead of destination so we can visualize it
+            gain.connect(analyser);
+            
+            osc.start(now);
+            osc.stop(now + 0.4);
+        });
+    </script>
+</body>
+
+</html>
