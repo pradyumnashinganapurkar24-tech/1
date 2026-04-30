@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuantumNexus — Research Lab</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --cyan: #00ffff;
+            --blue: #0088ff;
+            --purple: #8800ff;
+            --pink: #ff00aa;
+            --dark: #00020a;
+            --glass-bg: rgba(5, 10, 25, 0.45);
+            --glass-border: rgba(0, 255, 255, 0.15);
+            --glow: 0 0 20px rgba(0, 255, 255, 0.5), 0 0 60px rgba(0, 136, 255, 0.3);
+            --glow-pink: 0 0 20px rgba(255, 0, 170, 0.5), 0 0 60px rgba(136, 0, 255, 0.3);
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 50%, #050a1f 0%, var(--dark) 100%);
+            color: #fff;
+            font-family: 'Share Tech Mono', monospace;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        canvas#bg {
+            position: fixed; top: 0; left: 0; z-index: 0; opacity: 0.6; pointer-events: none;
+        }
+
+        /* Ambient Orbs */
+        .ambient-orb {
+            position: fixed; border-radius: 50%; filter: blur(80px); z-index: 0; opacity: 0.4;
+            animation: floatOrb 10s ease-in-out infinite alternate;
+        }
+        .orb-1 { width: 400px; height: 400px; top: -100px; left: -100px; background: var(--purple); }
+        .orb-2 { width: 500px; height: 500px; bottom: -200px; right: -100px; background: var(--blue); animation-delay: -5s; }
+        .orb-3 { width: 300px; height: 300px; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--cyan); animation-duration: 15s; opacity: 0.2; }
+
+        @keyframes floatOrb {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(50px, 30px) scale(1.1); }
+        }
+
+        .content { position: relative; z-index: 10; }
+
+        nav {
+            position: fixed; top: 0; width: 100%; padding: 20px 60px;
+            display: flex; justify-content: space-between; align-items: center; z-index: 100;
+            background: linear-gradient(to bottom, rgba(0, 2, 10, 0.95), transparent);
+            border-bottom: 1px solid rgba(0,255,255,0.05);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif; font-size: 1.6rem; font-weight: 900;
+            color: var(--cyan); text-shadow: var(--glow); letter-spacing: 2px;
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.7); text-decoration: none; margin-left: 30px;
+            font-size: 0.85rem; letter-spacing: 2px; text-transform: uppercase;
+            transition: all 0.3s; position: relative;
+        }
+        .nav-links a::after {
+            content: ''; position: absolute; bottom: -5px; left: 0; width: 0%;
+            height: 2px; background: var(--cyan); transition: width 0.3s;
+            box-shadow: var(--glow);
+        }
+        .nav-links a:hover { color: #fff; }
+        .nav-links a:hover::after { width: 100%; }
+
+        /* Glitch Effect */
+        .glitch {
+            position: relative;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            z-index: 1;
+        }
+        .glitch span { display: block; color: var(--cyan); text-shadow: var(--glow); }
+        .glitch::before, .glitch::after {
+            content: attr(data-text); position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.8;
+        }
+        .glitch::before { left: 2px; text-shadow: -2px 0 var(--pink); animation: glitch-anim 2s infinite linear alternate-reverse; }
+        .glitch::after { left: -2px; text-shadow: -2px 0 var(--blue); animation: glitch-anim2 3s infinite linear alternate-reverse; }
+
+        @keyframes glitch-anim {
+            0% { clip-path: inset(20% 0 80% 0); }
+            20% { clip-path: inset(60% 0 10% 0); }
+            40% { clip-path: inset(40% 0 50% 0); }
+            60% { clip-path: inset(80% 0 5% 0); }
+            80% { clip-path: inset(10% 0 70% 0); }
+            100% { clip-path: inset(30% 0 20% 0); }
+        }
+        @keyframes glitch-anim2 {
+            0% { clip-path: inset(10% 0 60% 0); }
+            20% { clip-path: inset(80% 0 5% 0); }
+            40% { clip-path: inset(30% 0 20% 0); }
+            60% { clip-path: inset(70% 0 10% 0); }
+            80% { clip-path: inset(5% 0 80% 0); }
+            100% { clip-path: inset(50% 0 30% 0); }
+        }
+
+        .hero { min-height: 100vh; display: flex; align-items: center; justify-content: center; text-align: center; padding: 100px 20px 0; }
+        .hero-inner { max-width: 900px; }
+
+        /* Advanced 3D Ring */
+        .quantum-hologram {
+            position: relative; width: 280px; height: 280px; margin: 0 auto 50px;
+            transform-style: preserve-3d; perspective: 1000px;
+        }
+        .holo-ring {
+            position: absolute; inset: 0; border-radius: 50%; border: 2px solid transparent;
+            box-shadow: inset 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+        .holo-ring.x { border-top-color: var(--cyan); border-bottom-color: var(--cyan); animation: spin3D-X 8s linear infinite; }
+        .holo-ring.y { border-left-color: var(--pink); border-right-color: var(--pink); animation: spin3D-Y 10s linear infinite; }
+        .holo-ring.z { border-top-color: var(--purple); border-bottom-color: var(--purple); animation: spin3D-Z 12s linear infinite; }
+        
+        .holo-core {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 60px; height: 60px; background: radial-gradient(circle, #fff, var(--cyan));
+            border-radius: 50%; box-shadow: 0 0 40px var(--cyan), 0 0 80px var(--blue);
+            animation: pulseCore 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes spin3D-X { 0% { transform: rotateX(0deg) rotateY(0deg); } 100% { transform: rotateX(360deg) rotateY(180deg); } }
+        @keyframes spin3D-Y { 0% { transform: rotateY(0deg) rotateZ(0deg); } 100% { transform: rotateY(360deg) rotateZ(180deg); } }
+        @keyframes spin3D-Z { 0% { transform: rotateZ(0deg) rotateX(0deg); } 100% { transform: rotateZ(360deg) rotateX(180deg); } }
+        @keyframes pulseCore { 0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.8; } 100% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; } }
+
+        .subtitle { font-size: 1rem; letter-spacing: 5px; color: rgba(255, 255, 255, 0.7); text-transform: uppercase; margin-bottom: 50px; text-shadow: 0 0 10px rgba(255,255,255,0.3); }
+
+        .cta {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 18px 45px; background: rgba(0, 255, 255, 0.05); border: 1px solid var(--cyan);
+            color: #fff; text-decoration: none; font-family: 'Orbitron', sans-serif;
+            font-size: 0.9rem; letter-spacing: 3px; text-transform: uppercase;
+            position: relative; overflow: hidden; transition: all 0.4s; border-radius: 4px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2); cursor: pointer;
+        }
+        .cta::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.4), transparent); transition: left 0.5s;
+        }
+        .cta:hover::before { left: 100%; }
+        .cta:hover { background: rgba(0, 255, 255, 0.2); box-shadow: var(--glow); transform: translateY(-2px); }
+
+        /* Live Telemetry Display */
+        .live-indicator { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 30px; }
+        .pulse-dot { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 15px #00ff00; animation: dotPulse 1.5s infinite alternate; }
+        .live-text { color: #00ff00; font-family: 'Share Tech Mono', sans-serif; letter-spacing: 3px; font-size: 0.8rem; text-transform: uppercase; }
+        
+        @keyframes dotPulse { 0% { opacity: 0.4; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
+
+        .stats {
+            padding: 0 60px 100px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+        }
+
+        .stat-box {
+            padding: 40px 20px; text-align: center; transition: transform 0.3s;
+            position: relative; overflow: hidden;
+        }
+        .stat-box::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+        }
+        .stat-box:hover { transform: translateY(-5px); border-color: rgba(0,255,255,0.4); }
+
+        .stat-num {
+            font-family: 'Orbitron', sans-serif; font-size: 3rem; color: #fff;
+            text-shadow: 0 0 15px rgba(255,255,255,0.5), var(--glow); display: block;
+            margin-bottom: 15px; font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 0.8rem; letter-spacing: 3px; color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase; display: block;
+        }
+
+        .projects { padding: 80px 60px; position: relative; }
+        .section-title {
+            font-family: 'Orbitron', sans-serif; font-size: 1.5rem; letter-spacing: 6px;
+            color: #fff; text-transform: uppercase; margin-bottom: 60px;
+            display: flex; align-items: center; gap: 20px;
+        }
+        .section-title::before, .section-title::after {
+            content: ''; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+        }
+
+        .project-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; }
+
+        .project-card {
+            padding: 40px; position: relative; overflow: hidden; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; min-height: 280px;
+        }
+        .project-card::after {
+            content: ''; position: absolute; inset: 0; border-radius: 12px; border: 2px solid transparent;
+            background: linear-gradient(135deg, rgba(0,255,255,0.4), rgba(136,0,255,0.4)) border-box;
+            -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: destination-out; mask-composite: exclude;
+            opacity: 0; transition: opacity 0.4s;
+        }
+        .project-card:hover { transform: translateY(-10px) scale(1.02); background: rgba(5,10,30,0.7); box-shadow: 0 15px 40px rgba(0,255,255,0.15); }
+        .project-card:hover::after { opacity: 1; }
+
+        .project-num {
+            font-family: 'Orbitron', sans-serif; font-size: 4rem; color: rgba(255,255,255,0.05); font-weight: 900;
+            position: absolute; top: 10px; right: 20px; transition: color 0.4s, transform 0.4s;
+        }
+        .project-card:hover .project-num { color: rgba(0, 255, 255, 0.15); transform: scale(1.1); }
+
+        .project-name { font-family: 'Orbitron', sans-serif; font-size: 1.4rem; color: #fff; margin-bottom: 15px; position: relative; z-index: 2; line-height: 1.3; }
+        .project-desc { font-size: 0.95rem; color: rgba(255, 255, 255, 0.6); line-height: 1.7; position: relative; z-index: 2; }
+        
+        .project-tag {
+            display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 0.75rem; font-family: 'Orbitron', sans-serif;
+            letter-spacing: 2px; color: #fff; margin-top: 25px; align-self: flex-start; text-shadow: 0 0 5px rgba(0,0,0,0.5);
+            position: relative; z-index: 2; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        /* Waitlist Section */
+        .waitlist-section {
+            padding: 100px 60px; text-align: center; margin-top: 40px;
+            background: linear-gradient(to top, rgba(0, 255, 255, 0.05), transparent);
+            border-top: 1px solid rgba(0,255,255,0.1);
+        }
+        .waitlist-container {
+            max-width: 600px; margin: 0 auto; padding: 50px;
+        }
+        .waitlist-title { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: var(--cyan); margin-bottom: 20px; text-shadow: var(--glow); }
+        .waitlist-form { display: flex; gap: 15px; margin-top: 30px; position: relative; }
+        .waitlist-input {
+            flex: 1; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border); border-radius: 4px;
+            padding: 15px 20px; color: #fff; font-family: 'Share Tech Mono', monospace; font-size: 1rem;
+            outline: none; transition: all 0.3s; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .waitlist-input:focus { border-color: var(--cyan); box-shadow: 0 0 15px rgba(0,255,255,0.2), inset 0 2px 5px rgba(0,0,0,0.5); }
+        .waitlist-input::placeholder { color: rgba(255,255,255,0.3); }
+        
+        .msg-box { margin-top: 20px; font-size: 0.9rem; padding: 10px; border-radius: 4px; display: none; }
+        .msg-success { background: rgba(0, 255, 136, 0.1); color: #00ff88; border: 1px solid #00ff88; display: block; }
+        .msg-error { background: rgba(255, 0, 85, 0.1); color: #ff0055; border: 1px solid #ff0055; display: block; }
+
+        /* Loading Spinner */
+        .loader {
+            width: 48px; height: 48px; border: 3px solid rgba(0,255,255,0.1); border-radius: 50%;
+            border-top-color: var(--cyan); animation: spin 1s ease-in-out infinite; margin: 50px auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Interactive Mouse Aura */
+        #aura {
+            position: fixed; width: 400px; height: 400px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(0,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none; z-index: 1000; transform: translate(-50%, -50%);
+            transition: width 0.3s, height 0.3s; opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+    
+    <canvas id="bg"></canvas>
+    <div id="aura"></div>
+
+    <div class="content">
+        <nav>
+            <div class="logo">QUANTUM<span style="color:#fff">NEXUS</span></div>
+            <div class="nav-links">
+                <a href="#research">Research</a>
+                <a href="#projects">Protocols</a>
+                <a href="#waitlist">Access</a>
+            </div>
+        </nav>
+
+        <section class="hero" id="research">
+            <div class="hero-inner">
+                <div class="quantum-hologram">
+                    <div class="holo-ring x"></div>
+                    <div class="holo-ring y"></div>
+                    <div class="holo-ring z"></div>
+                    <div class="holo-core"></div>
+                </div>
+                
+                <h1 class="glitch" data-text="Computing at the Quantum Edge">
+                    Computing at the
+                    <span>Quantum Edge</span>
+                </h1>
+                <p class="subtitle">Welcome to the forefront of computational reality.</p>
+                <div class="live-indicator">
+                    <div class="pulse-dot"></div>
+                    <span class="live-text">Live Telemetry Link Active</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Stats Section -->
+        <section class="stats">
+            <div class="stat-box glass-panel">
+                <span class="stat-num" id="stat-qubits">---</span>
+                <span class="stat-label">Qubits Active</span>
+            </div>
+            <div class="stat-box glass-panel">
+                <span class="stat-num" id="stat-coherence">--.-%</span>
+                <span class="stat-label">Coherence Rate</span>
+            </div>
+            <div class="stat-box glass-panel">
+                <span class="stat-num" id="stat-speed">--ms</span>
+                <span class="stat-label">Gate Speed</span>
+            </div>
+            <div class="stat-box glass-panel">
+                <span class="stat-num" id="stat-supremacy">----</span>
+                <span class="stat-label">Est. Supremacy</span>
+            </div>
+        </section>
+
+        <!-- Dynamic Projects Section -->
+        <section class="projects" id="projects">
+            <h2 class="section-title">Classified Protocols</h2>
+            <div id="projects-loader" class="loader"></div>
+            <div class="project-grid" id="project-container" style="display: none;">
+                <!-- Projects injected via JS -->
+            </div>
+        </section>
+
+        <!-- Waitlist Section -->
+        <section class="waitlist-section" id="waitlist">
+            <div class="waitlist-container glass-panel">
+                <h2 class="waitlist-title">Join the Neural Waitlist</h2>
+                <p style="color: rgba(255,255,255,0.6); font-size: 0.95rem;">Request early access to the Quantum PPU infrastructure.</p>
+                <div class="waitlist-form">
+                    <input type="email" id="email-input" class="waitlist-input" placeholder="Enter your transmission cipher (Email)">
+                    <button class="cta" onclick="submitWaitlist()">Initiate Link</button>
+                </div>
+                <div id="msg-box" class="msg-box"></div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Config
+        const API_BASE = 'http://localhost:5003/api';
+
+        // Mouse Aura Effect
+        const aura = document.getElementById('aura');
+        document.addEventListener('mousemove', (e) => {
+            aura.style.opacity = '1';
+            aura.style.left = e.clientX + 'px';
+            aura.style.top = e.clientY + 'px';
+        });
+
+        document.querySelectorAll('a, button, .project-card').forEach(el => {
+            el.addEventListener('mouseenter', () => { aura.style.width = '600px'; aura.style.height = '600px'; });
+            el.addEventListener('mouseleave', () => { aura.style.width = '400px'; aura.style.height = '400px'; });
+        });
+
+        // Advanced WebGL-like Canvas Background
+        const canvas = document.getElementById('bg');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.z = Math.random() * 2 + 0.1;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.size = Math.random() * 2;
+            }
+            update() {
+                this.x += this.vx / this.z;
+                this.y += this.vy / this.z;
+                if(this.x < 0 || this.x > width) this.vx *= -1;
+                if(this.y < 0 || this.y > height) this.vy *= -1;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(0, 255, 255, ${1/this.z})`;
+                ctx.fill();
+            }
+        }
+
+        for(let i=0; i<150; i++) particles.push(new Particle());
+
+        function animateBg() {
+            ctx.fillStyle = 'rgba(0, 2, 10, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw();
+                // Draw connections
+                for(let j=index+1; j<particles.length; j++) {
+                    const p2 = particles[j];
+                    const dx = p.x - p2.x;
+                    const dy = p.y - p2.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if(dist < 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.strokeStyle = `rgba(0, 136, 255, ${(1 - dist/100) * 0.3})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            });
+            requestAnimationFrame(animateBg);
+        }
+        animateBg();
+
+        // Backend Integration Functions
+        
+        async function fetchStats() {
+            try {
+                const res = await fetch(`${API_BASE}/stats`);
+                const data = await res.json();
+                
+                document.getElementById('stat-qubits').innerText = data.qubits;
+                document.getElementById('stat-coherence').innerText = data.coherence;
+                document.getElementById('stat-speed').innerText = data.speed;
+                document.getElementById('stat-supremacy').innerText = data.supremacy;
+            } catch (err) {
+                console.error("Failed to fetch quantum telemetry:", err);
+            }
+        }
+
+        async function fetchProjects() {
+            try {
+                const res = await fetch(`${API_BASE}/projects`);
+                const data = await res.json();
+                
+                const container = document.getElementById('project-container');
+                const loader = document.getElementById('projects-loader');
+                
+                container.innerHTML = ''; // Clear
+                
+                data.projects.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'project-card glass-panel';
+                    card.innerHTML = `
+                        <div class="project-num">${p.num}</div>
+                        <div>
+                            <div class="project-name">${p.name}</div>
+                            <div class="project-desc">${p.desc}</div>
+                        </div>
+                        <span class="project-tag" style="background: ${p.tag_color}20; color: ${p.tag_color}; border-color: ${p.tag_color}50; box-shadow: 0 0 10px ${p.tag_color}40;">
+                            ${p.tag}
+                        </span>
+                    `;
+                    container.appendChild(card);
+                });
+                
+                loader.style.display = 'none';
+                container.style.display = 'grid';
+
+            } catch (err) {
+                console.error("Failed to fetch classified protocols:", err);
+                document.getElementById('projects-loader').style.display = 'none';
+            }
+        }
+
+        async function submitWaitlist() {
+            const emailInput = document.getElementById('email-input');
+            const msgBox = document.getElementById('msg-box');
+            const email = emailInput.value.trim();
+            
+            msgBox.className = 'msg-box'; // reset
+            msgBox.innerText = '';
+            
+            if(!email) {
+                msgBox.innerText = "Error: Cipher missing.";
+                msgBox.classList.add('msg-error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/waitlist`, {
+                    method: 'POST',
+                    headers:{ 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    msgBox.innerText = data.message;
+                    msgBox.classList.add('msg-success');
+                    emailInput.value = '';
+                } else {
+                    msgBox.innerText = data.error || "Uplink failed.";
+                    msgBox.classList.add('msg-error');
+                }
+            } catch (err) {
+                msgBox.innerText = "Network Error: Could not connect to core.";
+                msgBox.classList.add('msg-error');
+            }
+        }
+
+        // Init
+        fetchProjects();
+        fetchStats();
+        // Poll stats every 2.5 seconds for "live" feel
+        setInterval(fetchStats, 2500);
+
+    </script>
+</body>
+</html>
