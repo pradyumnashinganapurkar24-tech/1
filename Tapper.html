@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber-Tap Overload</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Black+Han+Sans&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #05020a;
+            color: #fff;
+            font-family: 'Share Tech Mono', monospace;
+            overflow: hidden;
+            cursor: crosshair;
+            -webkit-tap-highlight-color: transparent; /* Remove mobile tap highlight */
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .hud {
+            position: absolute;
+            padding: 30px;
+            pointer-events: auto;
+            width: 100%;
+        }
+
+        #top-hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .level-text {
+            font-size: 3rem;
+            color: #00f5d4;
+            text-shadow: 0 0 20px #00f5d4;
+            font-family: 'Black Han Sans', sans-serif;
+            letter-spacing: 2px;
+        }
+
+        .timer-text {
+            font-size: 4rem;
+            color: #ffe600;
+            text-shadow: 0 0 20px #ffe600;
+            font-family: 'Black Han Sans', sans-serif;
+            transition: color 0.2s;
+        }
+        
+        .timer-text.danger {
+            color: #ff006e;
+            text-shadow: 0 0 30px #ff006e;
+            animation: pulse-danger 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-danger {
+            from { transform: scale(1); }
+            to { transform: scale(1.1); }
+        }
+
+        /* Progress Bar */
+        #progress-container {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            height: 30px;
+            background: rgba(255, 0, 110, 0.1);
+            border: 3px solid #ff006e;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(255, 0, 110, 0.4);
+            pointer-events: none;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff006e, #8338ec, #00f5d4);
+            box-shadow: 0 0 20px #00f5d4;
+            transition: width 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .tap-counter {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            color: #fff;
+            letter-spacing: 3px;
+        }
+
+        /* Center Menus */
+        .menu-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 2, 10, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            pointer-events: auto;
+            transition: opacity 0.5s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none !important;
+        }
+
+        h1 {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: 5rem;
+            color: #ff006e;
+            text-shadow: 4px 4px 0px #00f5d4, 0 0 40px #ff006e;
+            margin-bottom: 20px;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .btn-neon {
+            background: transparent;
+            border: 2px solid #00f5d4;
+            color: #00f5d4;
+            padding: 15px 50px;
+            font-size: 1.8rem;
+            font-family: 'Share Tech Mono', monospace;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 245, 212, 0.4), inset 0 0 15px rgba(0, 245, 212, 0.4);
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .btn-neon:hover {
+            background: #00f5d4;
+            color: #000;
+            box-shadow: 0 0 40px rgba(0, 245, 212, 0.8);
+            transform: scale(1.05);
+        }
+        
+        .btn-neon:active {
+            transform: scale(0.95);
+        }
+
+        /* CRT Effect Overlay */
+        .crt {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+    <div class="crt"></div>
+
+    <div id="ui-layer">
+        <!-- In-Game HUD -->
+        <div id="hud" class="hud hidden">
+            <div id="top-hud">
+                <div class="level-text">LEVEL <span id="level-num">1</span></div>
+                <div class="timer-text" id="timer-text">10.0</div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progress-container" class="hidden">
+            <div id="progress-bar"></div>
+        </div>
+        <div id="tap-counter" class="tap-counter hidden">TAPS: <span id="tap-current">0</span> / <span id="tap-target">30</span></div>
+
+        <!-- Start Menu -->
+        <div id="start-menu" class="menu-overlay">
+            <h1>OVERCHARGE<br>PROTOCOL</h1>
+            <p style="font-size: 1.3rem; color: #aaa; margin-bottom: 50px; text-align: center; max-width: 600px; line-height: 1.6;">
+                The central reactor requires immense manual kinetic energy.<br>
+                <strong style="color: #00f5d4;">TAP OR CLICK REPEATEDLY</strong> anywhere on the screen.<br>
+                Hit the target before the timer expires to advance.
+            </p>
+            <button class="btn-neon" id="btn-start">INITIALIZE</button>
+        </div>
+
+        <!-- Level Transition Menu -->
+        <div id="transition-menu" class="menu-overlay hidden">
+            <h1 style="color: #00f5d4; text-shadow: 0 0 40px #00f5d4;">REACTOR STABLE</h1>
+            <p style="font-size: 1.5rem; color: #fff; margin-bottom: 40px;">Preparing next tier...</p>
+            <div style="font-size: 2rem; color: #ffe600;" id="next-level-target">Target: 40 Taps in 9s</div>
+        </div>
+
+        <!-- Game Over Menu -->
+        <div id="gameover-menu" class="menu-overlay hidden">
+            <h1>MELTDOWN</h1>
+            <div style="font-size: 2rem; color: #fff; margin-bottom: 10px;">SYSTEM FAILED AT LEVEL: <span id="final-level" style="color: #00f5d4;">1</span></div>
+            <div style="font-size: 1.5rem; color: #aaa; margin-bottom: 40px;">INSUFFICIENT ENERGY GENERATED</div>
+            <button class="btn-neon" id="btn-restart" style="border-color: #ff006e; color: #ff006e; box-shadow: 0 0 15px rgba(255,0,110,0.4);">REBOOT SYSTEM</button>
+        </div>
+    </div>
+
+<script>
+/** 
+ * CYBER-TAP OVERLOAD
+ * Continuous tapping mechanics with increasing difficulty.
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+let width, height;
+
+// Resize handling
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- GAME STATE ---
+let gameState = 'START'; // START, PLAYING, TRANSITION, GAMEOVER
+let lastTime = 0;
+
+let level = 1;
+let currentTaps = 0;
+let targetTaps = 30;
+let maxTime = 10.0;
+let timeLeft = 10.0;
+
+let shakeAmount = 0;
+
+// Entities
+let particles = [];
+let ripples = [];
+
+// The Core Reactor Object
+let reactor = {
+    baseRadius: 80,
+    radius: 80,
+    color1: '#8338ec',
+    color2: '#ff006e',
+    rotation: 0,
+    pulse: 0
+};
+
+// --- AUDIO SYNTHESIS ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    
+    switch(type) {
+        case 'tap':
+            // High-tech beep escalating with progress
+            const progress = currentTaps / targetTaps;
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400 + (progress * 800), now);
+            osc.frequency.exponentialRampToValueAtTime(800 + (progress * 1200), now + 0.05);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+            break;
+        case 'success':
+            // Bass drop + choir
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+            gain.gain.setValueAtTime(0.4, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+            osc.start(now);
+            osc.stop(now + 1.5);
+            break;
+        case 'fail':
+            // Harsh buzzer
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.5);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.8);
+            osc.start(now);
+            osc.stop(now + 0.8);
+            break;
+    }
+}
+
+// --- CLASSES ---
+class Particle {
+    constructor(x, y, color, speed, lifeTime = 0.8) {
+        this.x = x;
+        this.y = y;
+        const angle = Math.random() * Math.PI * 2;
+        const s = Math.random() * speed + speed * 0.5;
+        this.vx = Math.cos(angle) * s;
+        this.vy = Math.sin(angle) * s;
+        this.color = color;
+        this.life = lifeTime;
+        this.maxLife = lifeTime;
+        this.radius = Math.random() * 4 + 2;
+    }
+    update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        // Friction
+        this.vx *= 0.95;
+        this.vy *= 0.95;
+        this.life -= dt;
+    }
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+class Ripple {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.radius = 5;
+        this.maxRadius = 150;
+        this.color = color;
+        this.life = 0.5;
+        this.maxLife = 0.5;
+    }
+    update(dt) {
+        this.radius += 500 * dt;
+        this.life -= dt;
+    }
+    draw(ctx) {
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+}
+
+// --- INPUT LOGIC ---
+
+function handleTap(x, y) {
+    if (gameState !== 'PLAYING') return;
+
+    currentTaps++;
+    playSound('tap');
+    
+    // Add visual feedback at tap location
+    const colors = ['#00f5d4', '#ff006e', '#ffe600'];
+    const col = colors[Math.floor(Math.random() * colors.length)];
+    
+    ripples.push(new Ripple(x, y, col));
+    for(let i=0; i<8; i++) {
+        particles.push(new Particle(x, y, col, 300));
+    }
+
+    // Update Reactor size and screen shake
+    const progress = currentTaps / targetTaps;
+    reactor.radius = reactor.baseRadius + (progress * 150);
+    shakeAmount += 3 + (progress * 5); // Shake gets stronger as you get closer
+
+    updateHUD();
+
+    // Win Condition
+    if (currentTaps >= targetTaps) {
+        levelComplete();
+    }
+}
+
+// Support both Mouse and Touch
+window.addEventListener('mousedown', (e) => {
+    if (e.target.tagName !== 'BUTTON') { // Prevent double trigger on UI
+        handleTap(e.clientX, e.clientY);
+    }
+});
+window.addEventListener('touchstart', (e) => {
+    if (e.target.tagName !== 'BUTTON') {
+        // Handle multi-touch (e.g., using two fingers to tap faster)
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            handleTap(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+        }
+    }
+}, {passive: false});
+
+// --- GAME FLOW LOGIC ---
+
+function updateHUD() {
+    document.getElementById('tap-current').innerText = currentTaps;
+    document.getElementById('tap-target').innerText = targetTaps;
+    
+    const progress = Math.min(1, currentTaps / targetTaps);
+    document.getElementById('progress-bar').style.width = `${progress * 100}%`;
+    
+    // Timer styling
+    const timerEl = document.getElementById('timer-text');
+    timerEl.innerText = timeLeft.toFixed(1);
+    if (timeLeft <= 3.0) {
+        timerEl.classList.add('danger');
+    } else {
+        timerEl.classList.remove('danger');
+    }
+}
+
+function initLevel() {
+    currentTaps = 0;
+    timeLeft = maxTime;
+    reactor.radius = reactor.baseRadius;
+    shakeAmount = 0;
+    
+    document.getElementById('level-num').innerText = level;
+    updateHUD();
+    
+    document.getElementById('transition-menu').classList.add('hidden');
+    document.getElementById('start-menu').classList.add('hidden');
+    document.getElementById('gameover-menu').classList.add('hidden');
+    
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('progress-container').classList.remove('hidden');
+    document.getElementById('tap-counter').classList.remove('hidden');
+    
+    gameState = 'PLAYING';
+    lastTime = performance.now();
+}
+
+function startGame() {
+    // Reset to Level 1
+    level = 1;
+    targetTaps = 30;
+    maxTime = 10.0;
+    initLevel();
+}
+
+function levelComplete() {
+    gameState = 'TRANSITION';
+    playSound('success');
+    
+    // Massive Explosion Effect
+    shakeAmount = 30;
+    for(let i=0; i<100; i++) {
+        const colors = ['#00f5d4', '#ff006e', '#ffe600', '#8338ec'];
+        particles.push(new Particle(width/2, height/2, colors[Math.floor(Math.random()*colors.length)], 800, 2));
+    }
+    ripples.push(new Ripple(width/2, height/2, '#fff'));
+    
+    // Hide HUD
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('progress-container').classList.add('hidden');
+    document.getElementById('tap-counter').classList.add('hidden');
+
+    // Increase Difficulty for Next Level
+    level++;
+    
+    // Logic: Required taps increase slightly, Time decreases slightly.
+    // Making it very hard very quickly.
+    targetTaps = Math.floor(targetTaps * 1.2);
+    maxTime = Math.max(3.0, maxTime * 0.95); // Caps at 3 seconds minimum
+
+    setTimeout(() => {
+        const menu = document.getElementById('transition-menu');
+        document.getElementById('next-level-target').innerText = `Target: ${targetTaps} Taps in ${maxTime.toFixed(1)}s`;
+        menu.classList.remove('hidden');
+        
+        // Auto-start next level after 2 seconds
+        setTimeout(() => {
+            if (gameState === 'TRANSITION') { // Ensure we didn't exit somehow
+                initLevel();
+            }
+        }, 2000);
+        
+    }, 1000);
+}
+
+function gameOver() {
+    gameState = 'GAMEOVER';
+    playSound('fail');
+    shakeAmount = 20;
+    
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('progress-container').classList.add('hidden');
+    document.getElementById('tap-counter').classList.add('hidden');
+    
+    document.getElementById('final-level').innerText = level;
+    document.getElementById('gameover-menu').classList.remove('hidden');
+}
+
+// --- RENDERING & LOOP ---
+
+function update(dt) {
+    if (gameState === 'PLAYING') {
+        timeLeft -= dt;
+        if (timeLeft <= 0) {
+            timeLeft = 0;
+            gameOver();
+        }
+        updateHUD();
+        
+        // Reactor Idle Animation
+        reactor.pulse += dt * 5;
+    }
+    
+    reactor.rotation += dt * 0.5;
+
+    // Update Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+    
+    // Update Ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+        ripples[i].update(dt);
+        if (ripples[i].life <= 0) ripples.splice(i, 1);
+    }
+
+    if (shakeAmount > 0) {
+        shakeAmount -= dt * 30;
+        if (shakeAmount < 0) shakeAmount = 0;
+    }
+}
+
+function draw() {
+    // Clear background
+    ctx.fillStyle = '#05020a'; 
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.save();
+    
+    // Apply screen shake
+    if (shakeAmount > 0) {
+        const dx = (Math.random() - 0.5) * shakeAmount;
+        const dy = (Math.random() - 0.5) * shakeAmount;
+        ctx.translate(dx, dy);
+    }
+
+    // Grid Background
+    ctx.strokeStyle = 'rgba(131, 56, 236, 0.1)';
+    ctx.lineWidth = 1;
+    const gridSize = 60;
+    ctx.beginPath();
+    for(let x=0; x<width; x+=gridSize) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+    for(let y=0; y<height; y+=gridSize) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
+    ctx.stroke();
+
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Draw Particles & Ripples
+    for (let p of particles) p.draw(ctx);
+    for (let r of ripples) r.draw(ctx);
+
+    // Draw Reactor
+    if (gameState === 'PLAYING' || gameState === 'TRANSITION') {
+        const cx = width / 2;
+        const cy = height / 2;
+        const r = reactor.radius + Math.sin(reactor.pulse) * 5;
+        
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(reactor.rotation);
+        
+        ctx.shadowBlur = 40;
+        ctx.shadowColor = reactor.color2;
+        
+        // Outer rings
+        ctx.strokeStyle = reactor.color1;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.2, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.setLineDash([20, 15]);
+        ctx.strokeStyle = '#00f5d4';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Core
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(0.5, reactor.color2);
+        grad.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+    }
+    
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+}
+
+function loop(timestamp) {
+    let dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    if (dt > 0.1) dt = 0.1; // Cap dt
+
+    update(dt);
+    draw();
+    
+    requestAnimationFrame(loop);
+}
+
+// Bind buttons
+document.getElementById('btn-start').addEventListener('click', () => {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    startGame();
+});
+document.getElementById('btn-restart').addEventListener('click', startGame);
+
+// Start loop
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
