@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Pixel - 8-Bit Retro</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="arcade-cabinet">
+        <div id="screen-bezel">
+            <div id="game-container">
+                <canvas id="game-canvas"></canvas>
+                <div id="scanlines"></div>
+                <div id="ui-layer">
+                    <div id="hud">
+                        <div>SCORE<br><span id="scoreDisplay">0</span></div>
+                    </div>
+                    <div id="main-menu" class="overlay active">
+                        <h1 class="flicker" style="color: #ffff00;">FLAPPY PIXEL</h1>
+                        <p>PRESS KEYBOARD TO PLAY</p>
+                        <button id="startBtn" class="retro-btn">INSERT COIN</button>
+                    </div>
+                    <div id="game-over" class="overlay">
+                        <h1 style="color: #ff0000;">GAME OVER</h1>
+                        <p>SCORE: <span id="finalScore">0</span></p>
+                        <button id="retryBtn" class="retro-btn">CONTINUE?</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="cabinet-controls">
+            <button id="muteBtn" class="retro-btn small">AUDIO: ON</button>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
