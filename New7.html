@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Horizons - Research Updates</title>
+    <style>
+        :root {
+            --bg: #111827;
+            --text: #f3f4f6;
+            --primary: #8b5cf6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            padding: 40px 20px;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #1f2937;
+            padding: 60px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            position: relative;
+            z-index: 1;
+            transition: opacity 1s;
+        }
+
+        header {
+            border-bottom: 2px solid #374151;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+
+        .category {
+            color: var(--primary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            color: #fff;
+            line-height: 1.2;
+            margin-bottom: 20px;
+        }
+
+        .meta {
+            color: #9ca3af;
+            font-size: 0.95rem;
+        }
+
+        p {
+            margin-bottom: 24px;
+            font-size: 1.15rem;
+        }
+
+        .shatter-word {
+            display: inline-block;
+            /* JS handles the animation per frame */
+        }
+
+        /* Black Hole Effect */
+        #blackhole {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            background: radial-gradient(circle, #000 30%, #4c1d95 60%, transparent 80%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 0 50px #8b5cf6, 0 0 120px #c084fc;
+            transition: transform 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            animation: spin 1s linear infinite;
+        }
+
+        #blackhole.active {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        @keyframes spin {
+            from {
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+            }
+
+            to {
+                transform: translate(-50%, -50%) scale(1) rotate(360deg);
+            }
+        }
+
+        /* Final message styling */
+        .oops-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 2s ease-in;
+            pointer-events: none;
+            z-index: 2000;
+        }
+
+        .oops-message.show {
+            opacity: 1;
+        }
+
+        .oops-message h2 {
+            font-size: 4rem;
+            color: var(--primary);
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px var(--primary);
+        }
+
+        .oops-message p {
+            font-size: 1.5rem;
+            color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="blackhole"></div>
+
+    <main id="content">
+        <header>
+            <span class="category">Advanced Physics</span>
+            <h1>CERN Reports Unprecedented Anomaly in Dark Matter Containment</h1>
+            <div class="meta">By Dr. Elena Rostova • Published Today</div>
+        </header>
+
+        <p>In a press release issued late last night, researchers at the Large Hadron Collider have reported a highly
+            localized spatial anomaly within Sector 4's containment field. During a routine collision experiment
+            designed to isolate dark matter particles, sensors detected an exponential drop in local gravitational
+            constants.</p>
+
+        <p>What began as a microscopic fluctuation quickly escalated into a self-sustaining singularity. Theoretical
+            physicists had long debated the possibility of creating stable micro-black holes, but the prevailing
+            consensus was that they would evaporate instantaneously due to Hawking radiation.</p>
+
+        <p>This anomaly, however, is not evaporating. It is actively absorbing surrounding data and matter. The research
+            team has isolated the sector, but the singularity exhibits a strange resonance with digital inputs.
+            Specifically, it seems to respond to electromagnetic triggers, such as the electrical signals generated by
+            computer peripherals.</p>
+
+        <p>Currently, you are viewing this report through a direct, unshielded connection to the CERN database. The
+            singularity is extremely sensitive. Any interaction, such as clicking your mouse or tapping your screen,
+            could create an electrostatic tether between your device and the anomaly.</p>
+
+        <p>We urge all readers to close this tab immediately. Do not click anywhere on the page, as it will open a
+            localized micro-rift on your screen, pulling the structural fabric of this very document into the void.</p>
+    </main>
+
+    <div class="oops-message" id="oops">
+        <h2>Singularity Expanded</h2>
+        <p>Well, you were warned.</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const content = document.getElementById('content');
+
+            // Wrap words
+            function wrapWords(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const words = node.nodeValue.split(/(\s+)/);
+                    if (words.length > 1 || (words.length === 1 && words[0].trim() !== '')) {
+                        const fragment = document.createDocumentFragment();
+                        words.forEach(word => {
+                            if (word.trim() === '') {
+                                fragment.appendChild(document.createTextNode(word));
+                            } else {
+                                const span = document.createElement('span');
+                                span.className = 'shatter-word';
+                                span.textContent = word;
+                                fragment.appendChild(span);
+                            }
+                        });
+                        node.parentNode.replaceChild(fragment, node);
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE') {
+                    Array.from(node.childNodes).forEach(wrapWords);
+                }
+            }
+
+            wrapWords(content);
+
+            const allWords = Array.from(document.querySelectorAll('.shatter-word'));
+            let isSucking = false;
+
+            // --- Web Audio API: Black Hole Sucking Sound ---
+            function playBlackHoleSound() {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const audioCtx = new AudioContext();
+
+                // Low frequency rumble
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(60, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 3);
+
+                const oscGain = audioCtx.createGain();
+                oscGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                oscGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1);
+                oscGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4);
+
+                osc.connect(oscGain);
+                oscGain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime);
+                osc.stop(audioCtx.currentTime + 4);
+
+                // White noise "whoosh"
+                const bufferSize = audioCtx.sampleRate * 4;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(200, audioCtx.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(5000, audioCtx.currentTime + 2.5);
+                filter.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 3.5);
+
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                noiseGain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 2);
+                noiseGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 3.5);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(audioCtx.destination);
+                noise.start(audioCtx.currentTime);
+            }
+
+            document.addEventListener('click', (e) => {
+                if (isSucking) return;
+                isSucking = true;
+                playBlackHoleSound();
+
+                const clickX = e.pageX;
+                const clickY = e.pageY;
+
+                // Show black hole
+                const bh = document.getElementById('blackhole');
+                bh.style.left = clickX + 'px';
+                bh.style.top = clickY + 'px';
+                bh.classList.add('active');
+
+                // Fade out the main container's background so only words remain
+                content.style.background = 'transparent';
+                content.style.boxShadow = 'none';
+
+                // Initialize physics data for each word
+                const wordsData = allWords.map(word => {
+                    const rect = word.getBoundingClientRect();
+                    const pageLeft = rect.left + window.scrollX;
+                    const pageTop = rect.top + window.scrollY;
+                    return {
+                        el: word,
+                        origX: pageLeft,
+                        origY: pageTop,
+                        x: pageLeft,
+                        y: pageTop,
+                        vx: (Math.random() - 0.5) * 5, // slight initial random velocity
+                        vy: (Math.random() - 0.5) * 5,
+                        rot: 0,
+                        vRot: (Math.random() - 0.5) * 20,
+                        active: true,
+                        // Add a slight delay based on distance so they don't all move at exactly the same time
+                        delay: Math.sqrt(Math.pow(clickX - pageLeft, 2) + Math.pow(clickY - pageTop, 2)) / 50
+                    };
+                });
+
+                let frameCount = 0;
+
+                function animate() {
+                    frameCount++;
+                    let allDead = true;
+
+                    wordsData.forEach(w => {
+                        if (!w.active) return;
+                        allDead = false;
+
+                        if (frameCount < w.delay) return; // Wait for delay
+
+                        const dx = clickX - w.x;
+                        const dy = clickY - w.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < 30) {
+                            w.active = false;
+                            w.el.style.opacity = 0;
+                            return;
+                        }
+
+                        // Number of frames this word has been active
+                        const activeFrames = frameCount - w.delay;
+
+                        // Gravity pull increases rapidly as distance decreases
+                        const force = 15000 / Math.max(dist, 10);
+                        const angle = Math.atan2(dy, dx);
+
+                        // Swirl force (perpendicular to pull)
+                        const swirlAngle = angle + Math.PI / 2;
+
+                        // Start with high swirl, low pull (orbiting phase)
+                        let pullCoef = 0.02;
+                        let swirlCoef = 0.15;
+                        let friction = 0.96; // Less friction for orbit
+
+                        // After 60 frames (approx 1 sec), transition to sucking in
+                        if (activeFrames > 60) {
+                            // Smoothly ramp up pull and friction over the next 60 frames
+                            const progress = Math.min(1, (activeFrames - 60) / 60);
+                            pullCoef = 0.02 + progress * 0.18; // Ramps up to 0.20
+                            swirlCoef = 0.15 - progress * 0.10; // Ramps down to 0.05
+                            friction = 0.96 - progress * 0.11; // Ramps down to 0.85
+                        }
+
+                        w.vx += Math.cos(angle) * force * pullCoef + Math.cos(swirlAngle) * force * swirlCoef;
+                        w.vy += Math.sin(angle) * force * pullCoef + Math.sin(swirlAngle) * force * swirlCoef;
+
+                        // Friction
+                        w.vx *= friction;
+                        w.vy *= friction;
+
+                        w.x += w.vx;
+                        w.y += w.vy;
+                        w.rot += w.vRot;
+
+                        const scale = Math.min(1, dist / 250);
+                        const opacity = Math.min(1, dist / 50);
+
+                        w.el.style.transform = `translate(${w.x - w.origX}px, ${w.y - w.origY}px) rotate(${w.rot}deg) scale(${scale})`;
+                        w.el.style.opacity = opacity;
+                    });
+
+                    if (!allDead) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        // Shrink black hole and show message
+                        bh.classList.remove('active');
+                        setTimeout(() => {
+                            document.getElementById('oops').classList.add('show');
+                        }, 800);
+                    }
+                }
+
+                // Start animation loop
+                requestAnimationFrame(animate);
+            });
+        });
+    </script>
+</body>
+
+</html>
