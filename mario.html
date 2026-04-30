@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super JS Bros</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* The game container maintains a retro 4:3 or 16:9 aspect ratio */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            max-width: 1200px;
+            max-height: 800px;
+            background: #5c94fc; /* Classic Sky Blue */
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.5rem;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .menu {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 20;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            color: #e52521;
+            text-shadow: 4px 4px 0 #fff;
+            font-size: 4rem;
+            margin-bottom: 20px;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        p {
+            font-size: 1rem;
+            line-height: 1.5;
+            text-align: center;
+            margin-bottom: 30px;
+            color: #fff;
+        }
+
+        .btn {
+            background: #e52521;
+            color: #fff;
+            border: 4px solid #fff;
+            padding: 15px 30px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #000;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .btn:active {
+            transform: translateY(8px);
+            box-shadow: 0 0 0 #000;
+        }
+
+        /* Touch Controls for Mobile */
+        #touch-controls {
+            position: absolute;
+            bottom: 40px;
+            left: 20px;
+            right: 20px;
+            display: none;
+            justify-content: space-between;
+            pointer-events: auto;
+            z-index: 15;
+        }
+
+        @media (max-width: 1024px), (pointer: coarse) {
+            #touch-controls {
+                display: flex !important;
+            }
+            .hud { font-size: 1rem; }
+            h1 { font-size: 2.5rem; }
+        }
+
+        .touch-btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem;
+            color: #fff;
+            user-select: none;
+        }
+        
+        .d-pad {
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="ui-layer">
+        <div class="hud hidden" id="hud">
+            <div>SCORE<br><span id="score">000000</span></div>
+            <div>COINS<br>x<span id="coins">00</span></div>
+            <div>WORLD<br>1-1</div>
+        </div>
+
+        <div class="menu" id="start-menu">
+            <h1>SUPER JS<br>BROS</h1>
+            <p>ARROWS / WASD to Move<br>SPACE to Jump<br>Stomp enemies!</p>
+            <button class="btn" id="btn-start">START GAME</button>
+        </div>
+
+        <div class="menu hidden" id="game-over">
+            <h1>GAME OVER</h1>
+            <p>Score: <span id="final-score">0</span></p>
+            <button class="btn" id="btn-restart">TRY AGAIN</button>
+        </div>
+
+        <div class="menu hidden" id="game-win">
+            <h1 style="color: #43b047;">LEVEL CLEAR!</h1>
+            <p>Score: <span id="win-score">0</span></p>
+            <button class="btn" id="btn-next">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div id="touch-controls">
+        <div class="d-pad">
+            <div class="touch-btn" id="btn-left">◀</div>
+            <div class="touch-btn" id="btn-right">▶</div>
+        </div>
+        <div class="touch-btn" id="btn-jump">▲</div>
+    </div>
+</div>
+
+<script>
+/**
+ * SUPER JS BROS - HTML5 Canvas Platformer
+ * A zero-dependency physics-based side-scroller.
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+// --- GAME CONSTANTS ---
+const TILE_SIZE = 40;
+const GRAVITY = 1500; // Pixels per second squared
+const MAX_FALL_SPEED = 600;
+const JUMP_FORCE = -600;
+const MOVE_SPEED = 250;
+const ACCEL = 1000;
+const FRICTION = 800;
+
+// --- STATE ---
+let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER, WIN
+let lastTime = 0;
+let cameraX = 0;
+let score = 0;
+let coinsCollected = 0;
+
+// Input State
+const keys = { left: false, right: false, jump: false, jumpPressed: false };
+
+window.addEventListener('keydown', e => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+        if (!keys.jump) keys.jumpPressed = true;
+        keys.jump = true;
+    }
+});
+window.addEventListener('keyup', e => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.jump = false;
+});
+
+// Touch controls
+const bindTouch = (id, key) => {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; if(key==='jump') keys.jumpPressed = true; });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
+};
+bindTouch('btn-left', 'left');
+bindTouch('btn-right', 'right');
+bindTouch('btn-jump', 'jump');
+
+
+// --- AUDIO SYNTHESIS ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'jump') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+    } else if (type === 'coin') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(987.77, now); // B5
+        osc.frequency.setValueAtTime(1318.51, now + 0.1); // E6
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now); osc.stop(now + 0.3);
+    } else if (type === 'stomp') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+    } else if (type === 'die') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now); osc.stop(now + 0.5);
+    } else if (type === 'win') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(554, now + 0.1);
+        osc.frequency.setValueAtTime(659, now + 0.2);
+        osc.frequency.setValueAtTime(880, now + 0.3);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0, now + 1);
+        osc.start(now); osc.stop(now + 1);
+    }
+}
+
+
+// --- LEVEL DATA ---
+// . = empty, G = Ground, B = Brick, ? = Coin Block, E = Enemy, F = Flagpole base, | = Flagpole
+const levelMap = [
+    "........................................................................................................................",
+    "........................................................................................................................",
+    "........................................................................................................................",
+    ".....................................................................................................................|..",
+    ".......................?.............................................................................................|..",
+    ".....................................................................................................................|..",
+    "....................B.?......................?.......................................................................|..",
+    "...........................................B...B................B....................................................|..",
+    "..................B.......?..............B.......B............B...B..................................................|..",
+    ".......................................B...........B........B.......B................................................|..",
+    "........E......................E...........................................................E...........E.............F..",
+    "GGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGG...GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+];
+
+let levelWidth = levelMap[0].length * TILE_SIZE;
+let levelHeight = levelMap.length * TILE_SIZE;
+let grid = [];
+let entities = [];
+let particles = [];
+
+// Parse level
+function buildLevel() {
+    grid = [];
+    entities = [];
+    particles = [];
+    score = 0;
+    coinsCollected = 0;
+    updateUI();
+    
+    for (let y = 0; y < levelMap.length; y++) {
+        grid[y] = [];
+        for (let x = 0; x < levelMap[y].length; x++) {
+            const char = levelMap[y][x];
+            let solid = false;
+            let type = char;
+            
+            if (char === 'G' || char === 'B' || char === '?') solid = true;
+            
+            if (char === 'E') {
+                entities.push(new Goomba(x * TILE_SIZE, y * TILE_SIZE));
+                type = '.'; // Keep background empty
+            }
+            
+            grid[y][x] = { type, solid, hit: false };
+        }
+    }
+    
+    player = new Player(100, 200);
+}
+
+
+// --- PHYSICS & UTILS ---
+function aabb(a, b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+}
+
+// Get tiles overlapping a bounding box
+function getTiles(x, y, w, h) {
+    let tiles = [];
+    let startCol = Math.floor(x / TILE_SIZE);
+    let endCol = Math.floor((x + w - 0.1) / TILE_SIZE);
+    let startRow = Math.floor(y / TILE_SIZE);
+    let endRow = Math.floor((y + h - 0.1) / TILE_SIZE);
+    
+    for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+            if (r >= 0 && r < grid.length && c >= 0 && c < grid[0].length) {
+                if (grid[r][c].solid) {
+                    tiles.push({ row: r, col: c, tile: grid[r][c] });
+                }
+            }
+        }
+    }
+    return tiles;
+}
+
+
+// --- ENTITIES ---
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 24;
+        this.height = 32;
+        this.vx = 0;
+        this.vy = 0;
+        this.onGround = false;
+        this.facingRight = true;
+        this.dead = false;
+        this.won = false;
+        this.animTimer = 0;
+    }
+
+    update(dt) {
+        if (this.dead) {
+            this.vy += GRAVITY * dt;
+            this.y += this.vy * dt;
+            if (this.y > levelHeight + 100) gameState = 'GAMEOVER';
+            return;
+        }
+
+        if (this.won) {
+            this.vy += GRAVITY * dt;
+            this.y += this.vy * dt;
+            // Simple logic: hit the ground and run right
+            let tiles = getTiles(this.x, this.y, this.width, this.height);
+            if (tiles.length > 0) {
+                this.y = tiles[0].row * TILE_SIZE - this.height;
+                this.vy = 0;
+                this.onGround = true;
+            }
+            if (this.onGround) {
+                this.vx = MOVE_SPEED * 0.5;
+                this.x += this.vx * dt;
+                this.animTimer += dt;
+            }
+            if (this.x > levelWidth + 100) {
+                gameState = 'WIN';
+                setTimeout(() => document.getElementById('game-win').classList.remove('hidden'), 500);
+            }
+            return;
+        }
+
+        // Horizontal Movement
+        if (keys.left) {
+            this.vx -= ACCEL * dt;
+            this.facingRight = false;
+        } else if (keys.right) {
+            this.vx += ACCEL * dt;
+            this.facingRight = true;
+        } else {
+            // Friction
+            if (this.vx > 0) {
+                this.vx -= FRICTION * dt;
+                if (this.vx < 0) this.vx = 0;
+            } else if (this.vx < 0) {
+                this.vx += FRICTION * dt;
+                if (this.vx > 0) this.vx = 0;
+            }
+        }
+        
+        // Clamp speed
+        if (this.vx > MOVE_SPEED) this.vx = MOVE_SPEED;
+        if (this.vx < -MOVE_SPEED) this.vx = -MOVE_SPEED;
+
+        // Apply Horizontal Velocity & Collision
+        this.x += this.vx * dt;
+        
+        // Left screen bound
+        if (this.x < 0) { this.x = 0; this.vx = 0; }
+
+        let hTiles = getTiles(this.x, this.y, this.width, this.height);
+        for (let t of hTiles) {
+            if (this.vx > 0) { // moving right
+                this.x = t.col * TILE_SIZE - this.width;
+                this.vx = 0;
+            } else if (this.vx < 0) { // moving left
+                this.x = t.col * TILE_SIZE + TILE_SIZE;
+                this.vx = 0;
+            }
+        }
+
+        // Jumping
+        if (keys.jumpPressed && this.onGround) {
+            this.vy = JUMP_FORCE;
+            this.onGround = false;
+            playSound('jump');
+        }
+        keys.jumpPressed = false;
+
+        // Variable jump height
+        if (!keys.jump && this.vy < JUMP_FORCE / 2) {
+            this.vy = JUMP_FORCE / 2;
+        }
+
+        // Gravity
+        this.vy += GRAVITY * dt;
+        if (this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+
+        // Apply Vertical Velocity & Collision
+        this.y += this.vy * dt;
+        this.onGround = false;
+
+        let vTiles = getTiles(this.x, this.y, this.width, this.height);
+        for (let t of vTiles) {
+            if (this.vy > 0) { // falling
+                this.y = t.row * TILE_SIZE - this.height;
+                this.vy = 0;
+                this.onGround = true;
+            } else if (this.vy < 0) { // jumping up, hit head
+                this.y = t.row * TILE_SIZE + TILE_SIZE;
+                this.vy = 0;
+                
+                // Hit a block!
+                if (t.tile.type === '?' && !t.tile.hit) {
+                    t.tile.hit = true;
+                    addCoin(t.col, t.row);
+                } else if (t.tile.type === 'B') {
+                    // Just bounce
+                }
+            }
+        }
+
+        // Fall in pit
+        if (this.y > levelHeight) {
+            this.die();
+        }
+
+        // Flagpole Check
+        let centerC = Math.floor((this.x + this.width/2) / TILE_SIZE);
+        let centerR = Math.floor((this.y + this.height/2) / TILE_SIZE);
+        if (centerR >= 0 && centerC >= 0 && centerR < grid.length && centerC < grid[0].length) {
+            if (grid[centerR][centerC].type === '|') {
+                this.win();
+            }
+        }
+
+        // Animation
+        if (Math.abs(this.vx) > 10 && this.onGround) {
+            this.animTimer += dt;
+        } else {
+            this.animTimer = 0;
+        }
+    }
+
+    die() {
+        if (this.dead) return;
+        this.dead = true;
+        this.vy = -500; // Hop up
+        playSound('die');
+        setTimeout(() => document.getElementById('game-over').classList.remove('hidden'), 1000);
+    }
+
+    win() {
+        if (this.won) return;
+        this.won = true;
+        score += 1000;
+        updateUI();
+        playSound('win');
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+        if (!this.facingRight) ctx.scale(-1, 1);
+
+        // Draw Player (Retro 8-bit style via basic shapes)
+        
+        // Body (Overalls)
+        ctx.fillStyle = '#0058f8'; // Blue
+        ctx.fillRect(-10, -4, 20, 16);
+        
+        // Shirt/Arms
+        ctx.fillStyle = '#e52521'; // Red
+        ctx.fillRect(-12, -8, 24, 8);
+        
+        // Head
+        ctx.fillStyle = '#f8b800'; // Skin
+        ctx.fillRect(-8, -20, 16, 12);
+        
+        // Hat
+        ctx.fillStyle = '#e52521';
+        ctx.fillRect(-10, -22, 20, 4);
+        ctx.fillRect(0, -22, 12, 4); // Hat brim
+
+        // Eye
+        ctx.fillStyle = '#000';
+        ctx.fillRect(4, -18, 2, 4);
+
+        // Mustache
+        ctx.fillRect(4, -12, 6, 2);
+
+        // Feet (Animate if walking)
+        ctx.fillStyle = '#887000'; // Brown shoes
+        let walkCycle = Math.floor(this.animTimer * 10) % 2;
+        if (!this.onGround && !this.dead) {
+            // Jump pose
+            ctx.fillRect(-12, 8, 8, 8);
+            ctx.fillRect(4, 4, 8, 8);
+        } else if (walkCycle === 0 || this.vx === 0) {
+            // Stand
+            ctx.fillRect(-10, 12, 8, 4);
+            ctx.fillRect(2, 12, 8, 4);
+        } else {
+            // Walk step
+            ctx.fillRect(-12, 10, 8, 4);
+            ctx.fillRect(6, 12, 8, 4);
+        }
+
+        ctx.restore();
+    }
+}
+
+class Goomba {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = TILE_SIZE - 4;
+        this.height = TILE_SIZE - 4;
+        this.vx = -100;
+        this.vy = 0;
+        this.dead = false;
+        this.deadTimer = 0;
+        this.animTimer = 0;
+    }
+
+    update(dt) {
+        if (this.dead) {
+            this.deadTimer += dt;
+            return;
+        }
+
+        // Only active if near screen
+        if (Math.abs(this.x - player.x) > 1000) return;
+
+        this.animTimer += dt;
+
+        this.vy += GRAVITY * dt;
+        
+        this.x += this.vx * dt;
+        let hTiles = getTiles(this.x, this.y, this.width, this.height);
+        if (hTiles.length > 0) {
+            if (this.vx > 0) {
+                this.x = hTiles[0].col * TILE_SIZE - this.width;
+            } else {
+                this.x = hTiles[0].col * TILE_SIZE + TILE_SIZE;
+            }
+            this.vx *= -1; // Turn around
+        }
+
+        this.y += this.vy * dt;
+        let vTiles = getTiles(this.x, this.y, this.width, this.height);
+        if (vTiles.length > 0) {
+            if (this.vy > 0) {
+                this.y = vTiles[0].row * TILE_SIZE - this.height;
+                this.vy = 0;
+            }
+        }
+
+        // Collision with player
+        if (!player.dead && !player.won && aabb(this, player)) {
+            // Did player stomp? (Falling down and above Goomba center)
+            if (player.vy > 0 && player.y + player.height < this.y + this.height/2) {
+                this.dead = true;
+                player.vy = -400; // Bounce
+                score += 100;
+                updateUI();
+                playSound('stomp');
+            } else {
+                player.die();
+            }
+        }
+    }
+
+    draw(ctx) {
+        if (this.deadTimer > 0.5) return;
+
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+
+        if (this.dead) {
+            // Squished
+            ctx.scale(1, 0.3);
+            ctx.translate(0, this.height);
+        }
+
+        // Draw Goomba
+        ctx.fillStyle = '#c84c0c'; // Brown body
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width/2, Math.PI, 0); // Mushroom top
+        ctx.lineTo(this.width/2, this.height/2 - 4);
+        ctx.lineTo(-this.width/2, this.height/2 - 4);
+        ctx.fill();
+
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-6, -4, 4, 8);
+        ctx.fillRect(2, -4, 4, 8);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(-4, -2, 2, 4);
+        ctx.fillRect(4, -2, 2, 4);
+
+        // Feet (Animate)
+        if (!this.dead) {
+            ctx.fillStyle = '#000';
+            let step = Math.floor(this.animTimer * 5) % 2;
+            if (step === 0) {
+                ctx.beginPath(); ctx.ellipse(-8, 12, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(8, 12, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+            } else {
+                ctx.beginPath(); ctx.ellipse(-6, 10, 6, 4, -0.5, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(6, 14, 6, 4, 0.5, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'coin_score' or 'brick'
+        this.life = 1.0;
+        this.vy = -300;
+    }
+    update(dt) {
+        this.y += this.vy * dt;
+        this.life -= dt;
+    }
+    draw(ctx) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.life})`;
+        ctx.font = '16px "Press Start 2P"';
+        ctx.fillText('100', this.x, this.y);
+    }
+}
+
+
+// --- GAME SYSTEMS ---
+
+let player;
+
+function addCoin(col, row) {
+    playSound('coin');
+    score += 100;
+    coinsCollected++;
+    updateUI();
+    particles.push(new Particle(col * TILE_SIZE + 10, row * TILE_SIZE - 10, 'score'));
+    // Make block visually solid empty block after hit
+}
+
+function updateUI() {
+    document.getElementById('score').innerText = score.toString().padStart(6, '0');
+    document.getElementById('coins').innerText = coinsCollected.toString().padStart(2, '0');
+    document.getElementById('final-score').innerText = score;
+    document.getElementById('win-score').innerText = score;
+}
+
+function startGame() {
+    buildLevel();
+    document.getElementById('start-menu').classList.add('hidden');
+    document.getElementById('game-over').classList.add('hidden');
+    document.getElementById('game-win').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    gameState = 'PLAYING';
+    lastTime = performance.now();
+    // Start Audio Context if needed
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function update(dt) {
+    if (gameState !== 'PLAYING' && gameState !== 'WIN' && gameState !== 'GAMEOVER') return;
+
+    player.update(dt);
+
+    for (let e of entities) {
+        e.update(dt);
+    }
+
+    // Clean dead entities
+    entities = entities.filter(e => !(e.dead && e.deadTimer > 1));
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+
+    // Update Camera
+    let targetCamX = player.x - canvas.width / 2;
+    if (targetCamX < 0) targetCamX = 0;
+    if (targetCamX > levelWidth - canvas.width) targetCamX = levelWidth - canvas.width;
+    
+    // Smooth camera
+    cameraX += (targetCamX - cameraX) * 5 * dt;
+}
+
+function drawGrid(ctx) {
+    if (!grid || grid.length === 0) return;
+    
+    const startCol = Math.max(0, Math.floor(cameraX / TILE_SIZE));
+    const endCol = Math.min(grid[0].length, startCol + Math.ceil(canvas.width / TILE_SIZE) + 1);
+
+    for (let r = 0; r < grid.length; r++) {
+        for (let c = startCol; c < endCol; c++) {
+            const tile = grid[r][c];
+            const x = c * TILE_SIZE;
+            const y = r * TILE_SIZE;
+
+            if (tile.type === 'G') {
+                // Ground Block
+                ctx.fillStyle = '#c84c0c'; // Brick brown
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                // Grid lines for retro feel
+                ctx.strokeStyle = '#000';
+                ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+            } else if (tile.type === 'B') {
+                // Breakable Brick
+                ctx.fillStyle = '#c84c0c';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#f8b800'; // Highlights
+                ctx.fillRect(x+2, y+2, 4, 4);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                // Brick lines
+                ctx.beginPath(); ctx.moveTo(x, y+20); ctx.lineTo(x+40, y+20); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x+20, y); ctx.lineTo(x+20, y+20); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x+10, y+20); ctx.lineTo(x+10, y+40); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x+30, y+20); ctx.lineTo(x+30, y+40); ctx.stroke();
+            } else if (tile.type === '?') {
+                // Question Block
+                ctx.fillStyle = tile.hit ? '#c84c0c' : '#f8b800';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.strokeStyle = '#000';
+                ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#000';
+                ctx.fillRect(x+4, y+4, 4, 4);
+                ctx.fillRect(x+32, y+4, 4, 4);
+                ctx.fillRect(x+4, y+32, 4, 4);
+                ctx.fillRect(x+32, y+32, 4, 4);
+                
+                if (!tile.hit) {
+                    ctx.font = '24px "Press Start 2P"';
+                    ctx.fillStyle = '#c84c0c';
+                    ctx.fillText('?', x + 8, y + 30);
+                }
+            } else if (tile.type === '|') {
+                // Flagpole
+                ctx.fillStyle = '#f8b800'; // Ball
+                if (r === 3) ctx.beginPath(); ctx.arc(x + 20, y + 20, 10, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#fff'; // Pole
+                ctx.fillRect(x + 16, y + (r===3?30:0), 8, TILE_SIZE);
+                // Flag
+                if (r === 4 && !player.won) {
+                    ctx.fillStyle = '#00f800';
+                    ctx.beginPath();
+                    ctx.moveTo(x + 16, y);
+                    ctx.lineTo(x - 20, y + 10);
+                    ctx.lineTo(x + 16, y + 20);
+                    ctx.fill();
+                }
+            } else if (tile.type === 'F') {
+                // Flag Base
+                ctx.fillStyle = '#c84c0c';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillRect(x - 10, y + 20, TILE_SIZE + 20, 20);
+            }
+        }
+    }
+}
+
+function draw() {
+    // Clear background
+    ctx.fillStyle = '#5c94fc';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    // Camera transform
+    ctx.translate(-Math.floor(cameraX), 0);
+
+    // Draw clouds (parallax)
+    ctx.fillStyle = '#fff';
+    for (let i=0; i<10; i++) {
+        let cx = (i * 300) + (cameraX * 0.5) % 300;
+        ctx.fillRect(cx, 100, 60, 20);
+        ctx.fillRect(cx+10, 80, 40, 20);
+        ctx.fillRect(cx+20, 60, 20, 20);
+    }
+
+    drawGrid(ctx);
+
+    for (let e of entities) {
+        e.draw(ctx);
+    }
+
+    if (player) player.draw(ctx);
+
+    for (let p of particles) {
+        p.draw(ctx);
+    }
+
+    ctx.restore();
+}
+
+function loop(timestamp) {
+    let dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    if (dt > 0.1) dt = 0.1; // Cap dt
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+// Binds
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-restart').addEventListener('click', startGame);
+document.getElementById('btn-next').addEventListener('click', startGame);
+
+// Init blank
+draw();
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
