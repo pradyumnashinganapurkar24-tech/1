@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geometry Museum - 3D Math Explorer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #ff00ff; --bg: #050510; --glass: rgba(20, 20, 30, 0.6); }
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: 'Roboto Mono', monospace; color: #fff; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; pointer-events: none; display: flex; flex-direction: column; }
+        
+        .header { width: 100%; padding: 20px 40px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); pointer-events: auto; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: 2px; }
+        
+        .nav-bar { display: flex; gap: 15px; }
+        .nav-btn { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px 20px; font-size: 14px; cursor: pointer; transition: all 0.3s ease; font-family: 'Roboto Mono', monospace; }
+        .nav-btn:hover { background: rgba(255,0,255,0.1); border-color: var(--accent); }
+        .nav-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+        .info-panel { position: absolute; left: 40px; bottom: 40px; width: 400px; background: var(--glass); backdrop-filter: blur(10px); border-left: 4px solid var(--accent); padding: 30px; pointer-events: auto; opacity: 0; transition: opacity 0.5s ease; }
+        .info-panel.visible { opacity: 1; }
+        .info-panel h2 { margin: 0 0 10px 0; font-size: 28px; color: #fff; }
+        .info-panel p { line-height: 1.8; font-weight: 300; font-size: 14px; margin-bottom: 20px; color: #aaa; }
+        
+        .formula { background: rgba(0,0,0,0.5); padding: 15px; font-size: 12px; color: var(--accent); letter-spacing: 1px; }
+
+        #loading { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg); z-index: 100; display: flex; justify-content: center; align-items: center; font-size: 16px; transition: opacity 0.5s; }
+        .loader { width: 40px; height: 40px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 15px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading"><div class="loader"></div> Calculating Geometry...</div>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="header">
+            <h1>GEOMETRY_MUSEUM</h1>
+            <div class="nav-bar">
+                <button class="nav-btn" data-id="torus">Torus Knot</button>
+                <button class="nav-btn" data-id="icosahedron">Icosahedron</button>
+                <button class="nav-btn" data-id="dodecahedron">Dodecahedron</button>
+                <button class="nav-btn" data-id="cube">Cube</button>
+                <button class="nav-btn" data-id="sphere">Sphere</button>
+                <button class="nav-btn" data-id="pyramid">Pyramid</button>
+            </div>
+        </div>
+
+        <div class="info-panel" id="infoBox">
+            <h2 id="infoTitle">Shape</h2>
+            <p id="infoDesc">Description.</p>
+            <div class="formula" id="infoFormula">V - E + F = 2</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Audio Engine ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playChime() {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.8);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.8);
+        }
+
+        // --- Data ---
+        const Database = {
+            torus: {
+                title: "Torus Knot",
+                desc: "A torus knot is a special kind of knot that lies on the surface of an unknotted torus in 3-dimensional space. It is characterized by two coprime integers p and q.",
+                formula: "x = r cos(pφ), y = r sin(pφ), z = -sin(qφ)",
+                accent: '#ff00ff'
+            },
+            icosahedron: {
+                title: "Icosahedron",
+                desc: "A regular icosahedron is a convex polyhedron with 20 faces, 30 edges and 12 vertices. It is one of the five Platonic solids, and the one with the most faces.",
+                formula: "Vertices: 12 | Edges: 30 | Faces: 20 (Triangles)",
+                accent: '#00ffff'
+            },
+            dodecahedron: {
+                title: "Dodecahedron",
+                desc: "A regular dodecahedron is a polyhedron with 12 regular pentagonal faces. It is the dual of the icosahedron, meaning replacing faces with vertices creates an icosahedron.",
+                formula: "Vertices: 20 | Edges: 30 | Faces: 12 (Pentagons)",
+                accent: '#ffff00'
+            },
+            cube: {
+                title: "Cube (Hexahedron)",
+                desc: "A regular hexahedron is a three-dimensional solid object bounded by six square faces, facets or sides, with three meeting at each vertex.",
+                formula: "Vertices: 8 | Edges: 12 | Faces: 6 (Squares)",
+                accent: '#ff5555'
+            },
+            sphere: {
+                title: "Sphere",
+                desc: "A sphere is a geometrical object in three-dimensional space that is the surface of a ball. Like a circle in a two-dimensional space, a sphere is defined mathematically as the set of points that are all at the same distance r from a given point.",
+                formula: "x² + y² + z² = r²",
+                accent: '#55ff55'
+            },
+            pyramid: {
+                title: "Square Pyramid",
+                desc: "A square pyramid is a pyramid having a square base. If the apex is perpendicularly above the center of the square, it is a right square pyramid.",
+                formula: "Vertices: 5 | Edges: 8 | Faces: 5",
+                accent: '#5555ff'
+            }
+        };
+
+        // --- 3D Engine Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.01);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // Grid room
+        const roomGeo = new THREE.BoxGeometry(40, 40, 40);
+        const roomMat = new THREE.MeshBasicMaterial({ color: 0x222233, wireframe: true, transparent: true, opacity: 0.1 });
+        const room = new THREE.Mesh(roomGeo, roomMat);
+        scene.add(room);
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0x222222);
+        scene.add(ambient);
+        
+        const light1 = new THREE.PointLight(0xff00ff, 1, 50);
+        light1.position.set(5, 5, 5);
+        scene.add(light1);
+        
+        const light2 = new THREE.PointLight(0x00ffff, 1, 50);
+        light2.position.set(-5, -5, -5);
+        scene.add(light2);
+
+        // --- Procedural Geometry Builders ---
+        const models = {};
+        
+        // Material with cool wireframe overlay
+        function createHologramMaterial(colorHex) {
+            return new THREE.MeshPhysicalMaterial({
+                color: colorHex,
+                metalness: 0.9,
+                roughness: 0.1,
+                transparent: true,
+                opacity: 0.8,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1
+            });
+        }
+
+        function createTorus() {
+            const group = new THREE.Group();
+            const geo = new THREE.TorusKnotGeometry(3, 0.8, 200, 32);
+            const mesh = new THREE.Mesh(geo, createHologramMaterial(0xff00ff));
+            
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            
+            group.add(mesh); group.add(wire);
+            return group;
+        }
+
+        function createIcosahedron() {
+            const group = new THREE.Group();
+            const geo = new THREE.IcosahedronGeometry(4, 0);
+            const mesh = new THREE.Mesh(geo, createHologramMaterial(0x00ffff));
+            
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            
+            group.add(mesh); group.add(wire);
+            return group;
+        }
+
+        function createDodecahedron() {
+            const group = new THREE.Group();
+            const geo = new THREE.DodecahedronGeometry(4, 0);
+            const mesh = new THREE.Mesh(geo, createHologramMaterial(0xffff00));
+            
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            
+            group.add(mesh); group.add(wire);
+            return group;
+        }
+
+        function createCube() {
+            const group = new THREE.Group();
+            const geo = new THREE.BoxGeometry(5, 5, 5);
+            const mesh = new THREE.Mesh(geo, createHologramMaterial(0xff5555));
+            
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            
+            group.add(mesh); group.add(wire);
+            return group;
+        }
+
+        function createSphere() {
+            const group = new THREE.Group();
+            const geo = new THREE.SphereGeometry(4, 32, 32);
+            const mesh = new THREE.Mesh(geo, createHologramMaterial(0x55ff55));
+            
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            
+            group.add(mesh); group.add(wire);
+            return group;
+        }
+
+        function createPyramid() {
+            const group = new THREE.Group();
+            const geo = new THREE.ConeGeometry(4, 6, 4);
+            const mesh = new THREE.Mesh(geo, createHologramMaterial(0x5555ff));
+            
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            
+            group.add(mesh); group.add(wire);
+            return group;
+        }
+
+        models['torus'] = createTorus();
+        models['icosahedron'] = createIcosahedron();
+        models['dodecahedron'] = createDodecahedron();
+        models['cube'] = createCube();
+        models['sphere'] = createSphere();
+        models['pyramid'] = createPyramid();
+
+        // Add all to scene, hide them
+        for(let key in models) {
+            scene.add(models[key]);
+            models[key].visible = false;
+        }
+
+        let currentModel = null;
+
+        function showModel(id) {
+            if(currentModel) currentModel.visible = false;
+            
+            currentModel = models[id];
+            currentModel.visible = true;
+            
+            // Update UI
+            const data = Database[id];
+            document.documentElement.style.setProperty('--accent', data.accent);
+            document.getElementById('infoTitle').innerText = data.title;
+            document.getElementById('infoDesc').innerText = data.desc;
+            document.getElementById('infoFormula').innerText = data.formula;
+            
+            // Update lights to match accent
+            light1.color.set(data.accent);
+
+            const panel = document.getElementById('infoBox');
+            panel.classList.remove('visible');
+            setTimeout(() => panel.classList.add('visible'), 50);
+            
+            try { playChime(); } catch(e){}
+        }
+
+        // --- Interaction ---
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                showModel(e.target.dataset.id);
+            });
+        });
+
+        // Mouse interaction for rotation
+        let mouseX = 0; let mouseY = 0;
+        document.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            room.rotation.y += 0.001;
+            room.rotation.x += 0.0005;
+            
+            if(currentModel) {
+                // Auto spin
+                currentModel.rotation.x += 0.005;
+                currentModel.rotation.y += 0.01;
+                
+                // Mouse parallax effect on camera
+                camera.position.x += (mouseX * 5 - camera.position.x) * 0.05;
+                camera.position.y += (mouseY * 5 - camera.position.y) * 0.05;
+                camera.lookAt(scene.position);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Remove loading screen and start
+        document.getElementById('loading').style.opacity = '0';
+        setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+        
+        document.querySelector('[data-id="torus"]').click();
+        animate();
+
+    </script>
+</body>
+</html>
