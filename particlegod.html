@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Particle God — Command the Cosmos</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Orbitron',monospace;cursor:none}
+#hud{position:fixed;top:20px;left:20px;z-index:10;display:none;color:#fff}
+#sc{font-size:36px;color:#ffdd00;text-shadow:0 0 20px #ffdd00}
+#lv{font-size:13px;color:#666;margin-top:4px}
+#cursor{position:fixed;width:40px;height:40px;border-radius:50%;border:2px solid #ffdd00;transform:translate(-50%,-50%);pointer-events:none;z-index:30;box-shadow:0 0 15px #ffdd00;transition:border-color 0.2s}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,0.93);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;color:#fff}
+h1{font-size:58px;color:#ffdd00;text-shadow:0 0 40px #ffdd00;margin-bottom:12px}
+p{font-size:15px;color:#aaa;margin:5px 0}
+.btn{margin-top:28px;padding:14px 44px;background:transparent;border:2px solid #ffdd00;color:#ffdd00;font-size:18px;cursor:pointer;font-family:'Orbitron',monospace;letter-spacing:3px;transition:.3s;border-radius:4px}
+.btn:hover{background:#ffdd00;color:#000;box-shadow:0 0 30px #ffdd00}
+</style>
+</head>
+<body>
+<div id="cursor"></div>
+<div id="hud"><div>SCORE <span id="sc">0</span></div><div id="lv">LEFT CLICK: Attract | RIGHT CLICK: Repel</div></div>
+<div class="ov" id="start">
+  <h1>PARTICLE GOD</h1>
+  <p>You control gravity. Summon particle storms.</p>
+  <p>Use particles to KNOCK RED ENEMIES off the platform.</p>
+  <p style="color:#ffdd00;margin-top:10px">Left Click = Attract | Right Click = Repel</p>
+  <button class="btn" onclick="startGame()">BECOME GOD</button>
+</div>
+<div class="ov" id="win" style="display:none">
+  <h1 style="color:#00ff88">WAVE CLEAR!</h1>
+  <p style="font-size:22px;margin:14px">SCORE: <span id="ws" style="color:#ffdd00">0</span></p>
+  <button class="btn" style="border-color:#00ff88;color:#00ff88" onmouseover="this.style.background='#00ff88';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='#00ff88'" onclick="nextWave()">NEXT WAVE</button>
+</div>
+<div class="ov" id="dead" style="display:none">
+  <h1 style="color:#ff3366;text-shadow:0 0 40px #ff3366">OVERTHROWN</h1>
+  <p style="font-size:22px;margin:14px">SCORE: <span id="fl" style="color:#ffdd00">0</span></p>
+  <button class="btn" style="border-color:#ff3366;color:#ff3366" onmouseover="this.style.background='#ff3366';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='#ff3366'" onclick="startGame()">RETRY</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+let scene,cam,ren,platform,particles=[],enemies=[],running=false,score=0,wave=1;
+let mx=0,my=0,attracting=false,repelling=false;
+let audioCtx,bgN=[];
+
+function startAudio(){
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  [[55,0.05,'sine'],[110,0.03,'triangle'],[82,0.04,'sine']].forEach(([f,g,t])=>{
+    const o=audioCtx.createOscillator(),gn=audioCtx.createGain(),lfo=audioCtx.createOscillator(),lg=audioCtx.createGain();
+    o.type=t;o.frequency.value=f;lfo.frequency.value=0.15;lg.gain.value=5;
+    lfo.connect(lg);lg.connect(o.frequency);gn.gain.value=g;
+    o.connect(gn);gn.connect(audioCtx.destination);o.start();lfo.start();bgN.push(o,lfo);
+  });
+}
+function stopAudio(){bgN.forEach(n=>{try{n.stop()}catch(e){}});bgN=[];if(audioCtx){audioCtx.close();audioCtx=null;}}
+
+const PLT_SIZE=12,PLT_Y=-2;
+const PARTICLE_COUNT=300;
+
+function initScene(){
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x000008);
+  scene.fog=new THREE.Fog(0x000008,20,60);
+  cam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,100);
+  cam.position.set(0,12,20);cam.lookAt(0,0,0);
+  ren=new THREE.WebGLRenderer({antialias:true});
+  ren.setPixelRatio(devicePixelRatio);ren.setSize(innerWidth,innerHeight);
+  document.body.appendChild(ren.domElement);
+  scene.add(new THREE.AmbientLight(0x111133,4));
+  const dl=new THREE.DirectionalLight(0xffeebb,2);dl.position.set(5,15,5);scene.add(dl);
+
+  // Platform
+  const pg=new THREE.BoxGeometry(PLT_SIZE,0.5,PLT_SIZE);
+  const pm=new THREE.MeshStandardMaterial({color:0x224488,emissive:0x0a1a44,roughness:0.5,metalness:0.8});
+  platform=new THREE.Mesh(pg,pm);platform.position.y=PLT_Y;scene.add(platform);
+  // Grid lines on platform
+  const gg=new THREE.GridHelper(PLT_SIZE,12,0x0055ff,0x002244);gg.position.y=PLT_Y+0.26;scene.add(gg);
+
+  // Edge glow
+  const eg=new THREE.EdgesGeometry(pg);
+  const el=new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x4488ff,transparent:true,opacity:0.5}));
+  el.position.y=PLT_Y;scene.add(el);
+
+  // Particles
+  const pGeo=new THREE.BufferGeometry();
+  const positions=new Float32Array(PARTICLE_COUNT*3);
+  const velocities=[];
+  for(let i=0;i<PARTICLE_COUNT;i++){
+    positions[i*3]=(Math.random()-.5)*20;
+    positions[i*3+1]=PLT_Y+0.5+Math.random()*8;
+    positions[i*3+2]=(Math.random()-.5)*20;
+    velocities.push({x:(Math.random()-.5)*0.3,y:(Math.random()-.5)*0.3,z:(Math.random()-.5)*0.3});
+  }
+  pGeo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  const pMat=new THREE.PointsMaterial({color:0xffdd00,size:0.18,transparent:true,opacity:0.9});
+  const pSystem=new THREE.Points(pGeo,pMat);
+  pSystem.userData={velocities};
+  scene.add(pSystem);particles.push(pSystem);
+
+  spawnEnemies();
+}
+
+function spawnEnemies(){
+  enemies.forEach(e=>scene.remove(e));enemies=[];
+  const count=3+wave;
+  for(let i=0;i<count;i++){
+    const geo=new THREE.BoxGeometry(0.8,0.8,0.8);
+    const mat=new THREE.MeshStandardMaterial({color:0xff2244,emissive:0xaa0022,emissiveIntensity:0.8,roughness:0.3,metalness:0.8});
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.position.set((Math.random()-.5)*8,PLT_Y+0.7,(Math.random()-.5)*8);
+    mesh.userData={vx:(Math.random()-.5)*0.5,vz:(Math.random()-.5)*0.5,hp:3};
+    scene.add(mesh);enemies.push(mesh);
+  }
+}
+
+function startGame(){
+  document.getElementById('start').style.display='none';
+  document.getElementById('dead').style.display='none';
+  document.getElementById('win').style.display='none';
+  document.getElementById('hud').style.display='block';
+  if(ren){ren.dispose();document.querySelector('canvas')?.remove();}
+  particles=[];enemies=[];score=0;wave=1;running=true;
+  initScene();startAudio();loop();
+}
+
+function nextWave(){
+  document.getElementById('win').style.display='none';
+  wave++;spawnEnemies();running=true;loop();
+}
+
+// Convert mouse to 3D world plane y=PLT_Y+0.7
+const raycaster=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
+let worldCursor=new THREE.Vector3();
+const planeMesh=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshBasicMaterial({visible:false}));
+planeMesh.rotation.x=-Math.PI/2;planeMesh.position.y=PLT_Y+0.7;
+
+document.addEventListener('mousemove',e=>{
+  const cur=document.getElementById('cursor');
+  cur.style.left=e.clientX+'px';cur.style.top=e.clientY+'px';
+  mouse.x=(e.clientX/innerWidth)*2-1;
+  mouse.y=-(e.clientY/innerHeight)*2+1;
+});
+document.addEventListener('mousedown',e=>{if(e.button===0)attracting=true;if(e.button===2)repelling=true;});
+document.addEventListener('mouseup',e=>{if(e.button===0)attracting=false;if(e.button===2)repelling=false;});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+let clk=new THREE.Clock();
+function loop(){
+  if(!running)return;requestAnimationFrame(loop);
+  const dt=Math.min(clk.getDelta(),0.05);
+
+  // Cursor color
+  const cur=document.getElementById('cursor');
+  cur.style.borderColor=attracting?'#ffdd00':repelling?'#ff4466':'#888';
+  cur.style.boxShadow=attracting?'0 0 20px #ffdd00':repelling?'0 0 20px #ff4466':'none';
+
+  // Raycast to get world cursor position
+  if(cam){
+    raycaster.setFromCamera(mouse,cam);
+    const pts=[];raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-PLT_Y-0.7),worldCursor);
+  }
+
+  // Update particles
+  const p=particles[0];
+  if(!p){ren.render(scene,cam);return;}
+  const pos=p.geometry.attributes.position;
+  const vel=p.userData.velocities;
+  for(let i=0;i<PARTICLE_COUNT;i++){
+    const px2=pos.getX(i),py2=pos.getY(i),pz2=pos.getZ(i);
+    let dvx=0,dvy=0,dvz=0;
+    // Gravity toward cursor
+    if(attracting||repelling){
+      const dx=worldCursor.x-px2,dy=worldCursor.y-py2,dz=worldCursor.z-pz2;
+      const d=Math.sqrt(dx*dx+dy*dy+dz*dz)+0.5;
+      const f=(attracting?8:-6)/(d*d);
+      dvx+=dx*f*dt;dvy+=dy*f*dt;dvz+=dz*f*dt;
+    }
+    // Damping
+    vel[i].x=(vel[i].x+dvx)*0.98;
+    vel[i].y=(vel[i].y+dvy)*0.98;
+    vel[i].z=(vel[i].z+dvz)*0.98;
+    // Gravity
+    vel[i].y-=0.5*dt;
+    // Bounce off platform
+    let ny=py2+vel[i].y;
+    if(ny<PLT_Y+0.5){ny=PLT_Y+0.5;vel[i].y*=-0.5;}
+    // Wrap horizontally
+    let nx=(px2+vel[i].x+20)%40-20;
+    let nz=(pz2+vel[i].z+20)%40-20;
+    pos.setXYZ(i,nx,ny,nz);
+    // Check if particle hits an enemy
+    enemies.forEach(e=>{
+      const ex=e.position.x,ey=e.position.y,ez=e.position.z;
+      if(Math.abs(nx-ex)<0.5&&Math.abs(ny-ey)<0.6&&Math.abs(nz-ez)<0.5){
+        const spd=Math.sqrt(vel[i].x**2+vel[i].y**2+vel[i].z**2);
+        if(spd>0.3){e.userData.vx+=vel[i].x*0.5;e.userData.vz+=vel[i].z*0.5;}
+      }
+    });
+  }
+  pos.needsUpdate=true;
+
+  // Update enemies
+  let alive=0;
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    e.rotation.y+=dt*2;
+    e.userData.vx*=0.95;e.userData.vz*=0.95;
+    e.position.x+=e.userData.vx;e.position.z+=e.userData.vz;
+    const d=Math.sqrt(e.position.x**2+e.position.z**2);
+    // Fall off platform
+    if(Math.abs(e.position.x)>PLT_SIZE/2||Math.abs(e.position.z)>PLT_SIZE/2){
+      e.position.y-=2*dt;
+      if(e.position.y<-10){
+        scene.remove(e);enemies.splice(i,1);
+        score+=100*wave;document.getElementById('sc').textContent=score;
+        continue;
+      }
+    }else{e.position.y=PLT_Y+0.7;}
+    alive++;
+  }
+  if(alive===0&&running){
+    running=false;
+    document.getElementById('ws').textContent=score;
+    document.getElementById('win').style.display='flex';
+  }
+
+  ren.render(scene,cam);
+}
+
+function gameOver(){
+  running=false;stopAudio();
+  document.getElementById('hud').style.display='none';
+  document.getElementById('fl').textContent=score;
+  document.getElementById('dead').style.display='flex';
+}
+window.addEventListener('resize',()=>{if(cam&&ren){cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight);}});
+</script>
+</body>
+</html>
