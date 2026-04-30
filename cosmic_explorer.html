@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Explorer - 3D Solar System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #00ffff; --bg: #000005; --glass: rgba(10, 10, 20, 0.7); }
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: 'Space Grotesk', sans-serif; color: #fff; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; pointer-events: none; display: flex; }
+        
+        .sidebar { width: 300px; height: 100vh; background: var(--glass); backdrop-filter: blur(10px); border-right: 1px solid rgba(255,255,255,0.05); padding: 40px 20px; pointer-events: auto; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; }
+        .sidebar h1 { font-size: 28px; margin: 0 0 20px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 3px; color: #fff; text-shadow: 0 0 10px var(--accent); }
+        
+        .nav-btn { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 15px 20px; text-align: left; font-size: 18px; border-radius: 8px; cursor: pointer; transition: all 0.3s ease; font-family: 'Space Grotesk', sans-serif; letter-spacing: 1px; }
+        .nav-btn:hover { background: rgba(0,255,255,0.1); border-color: var(--accent); transform: scale(1.02); }
+        .nav-btn.active { background: rgba(0,255,255,0.2); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 15px rgba(0,255,255,0.2); }
+
+        .info-panel { position: absolute; right: 40px; top: 50%; transform: translateY(-50%); width: 350px; background: var(--glass); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 30px; pointer-events: auto; opacity: 0; transition: opacity 0.5s ease; box-shadow: 0 20px 40px rgba(0,0,0,0.8); }
+        .info-panel.visible { opacity: 1; }
+        .info-panel h2 { margin: 0 0 5px 0; font-size: 36px; color: var(--accent); text-transform: uppercase; }
+        .info-panel h4 { margin: 0 0 20px 0; font-weight: 300; color: #888; letter-spacing: 2px; }
+        .info-panel p { line-height: 1.6; font-weight: 300; font-size: 15px; margin-bottom: 25px; color: #ccc; }
+        
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .stat-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; text-align: center; }
+        .stat-box span { display: block; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+        .stat-box strong { font-size: 18px; color: #fff; font-weight: 600; }
+
+        #loading { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg); z-index: 100; display: flex; justify-content: center; align-items: center; font-size: 20px; letter-spacing: 5px; text-transform: uppercase; transition: opacity 1s; }
+    </style>
+</head>
+<body>
+
+    <div id="loading">Initializing Deep Space...</div>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="sidebar">
+            <h1>Cosmos</h1>
+            <button class="nav-btn" data-id="earth">Earth</button>
+            <button class="nav-btn" data-id="mars">Mars</button>
+            <button class="nav-btn" data-id="saturn">Saturn</button>
+            <button class="nav-btn" data-id="venus">Venus</button>
+            <button class="nav-btn" data-id="jupiter">Jupiter</button>
+            <button class="nav-btn" data-id="uranus">Uranus</button>
+        </div>
+
+        <div class="info-panel" id="infoBox">
+            <h2 id="infoTitle">Planet</h2>
+            <h4 id="infoSub">Classification</h4>
+            <p id="infoDesc">Description.</p>
+            
+            <div class="stat-grid">
+                <div class="stat-box"><span>Gravity</span><strong id="stat1-val">0</strong></div>
+                <div class="stat-box"><span>Radius</span><strong id="stat2-val">0</strong></div>
+                <div class="stat-box"><span>Moons</span><strong id="stat3-val">0</strong></div>
+                <div class="stat-box"><span>Temp</span><strong id="stat4-val">0</strong></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Audio Engine ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSwoosh() {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.5);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // --- Data ---
+        const Database = {
+            earth: {
+                title: "Earth", sub: "Terrestrial Planet",
+                desc: "Earth is the third planet from the Sun and the only astronomical object known to harbor life. About 71% of Earth's surface is made up of the ocean.",
+                stats: ["9.8 m/s²", "6,371 km", "1", "15 °C"],
+                accent: '#00ffff'
+            },
+            mars: {
+                title: "Mars", sub: "Terrestrial Planet",
+                desc: "Mars is the fourth planet from the Sun. It is a dusty, cold, desert world with a very thin atmosphere, often called the 'Red Planet'.",
+                stats: ["3.7 m/s²", "3,389 km", "2", "-60 °C"],
+                accent: '#ff5533'
+            },
+            saturn: {
+                title: "Saturn", sub: "Gas Giant",
+                desc: "Saturn is the sixth planet from the Sun and the second-largest in the Solar System. It is adorned with a dazzling, complex system of icy rings.",
+                stats: ["10.4 m/s²", "58,232 km", "146", "-140 °C"],
+                accent: '#ffcc88'
+            },
+            venus: {
+                title: "Venus", sub: "Terrestrial Planet",
+                desc: "Venus is the second planet from the Sun. It is a terrestrial planet and is sometimes called Earth's 'sister planet' because of their similar size and mass.",
+                stats: ["8.87 m/s²", "6,051 km", "0", "464 °C"],
+                accent: '#ffa07a'
+            },
+            jupiter: {
+                title: "Jupiter", sub: "Gas Giant",
+                desc: "Jupiter is the fifth planet from the Sun and the largest in the Solar System. It is a gas giant with a mass more than two and a half times that of all the other planets in the Solar System combined.",
+                stats: ["24.79 m/s²", "69,911 km", "95", "-110 °C"],
+                accent: '#d2b48c'
+            },
+            uranus: {
+                title: "Uranus", sub: "Ice Giant",
+                desc: "Uranus is the seventh planet from the Sun. It has the third-largest planetary radius and fourth-largest planetary mass in the Solar System.",
+                stats: ["8.69 m/s²", "25,362 km", "28", "-195 °C"],
+                accent: '#add8e6'
+            }
+        };
+
+        // --- 3D Engine Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        
+        // Starfield background
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsMaterial = new THREE.PointsMaterial({color: 0xffffff, size: 0.1});
+        const starsVertices = [];
+        for(let i=0; i<2000; i++) {
+            const x = THREE.MathUtils.randFloatSpread(200);
+            const y = THREE.MathUtils.randFloatSpread(200);
+            const z = THREE.MathUtils.randFloatSpread(200);
+            starsVertices.push(x, y, z);
+        }
+        starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+        const starField = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(starField);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, 0.1);
+        scene.add(ambient);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
+        pointLight.position.set(20, 10, 20);
+        scene.add(pointLight);
+
+        // --- Procedural Planet Builders ---
+        const models = {};
+        
+        // Custom Shader for Earth atmosphere
+        const vertexShader = `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        const fragmentShader = `
+            uniform vec3 glowColor;
+            varying vec3 vNormal;
+            void main() {
+                float intensity = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+                gl_FragColor = vec4(glowColor, 1.0) * intensity;
+            }
+        `;
+
+        function createEarth() {
+            const group = new THREE.Group();
+            
+            // Procedural texture approximation (noise-like)
+            const mat = new THREE.MeshPhongMaterial({ color: 0x1133aa, shininess: 10, flatShading: true });
+            const geo = new THREE.IcosahedronGeometry(6, 4); // Low-poly look
+            
+            // Randomize vertices slightly for terrain
+            const posAttribute = geo.attributes.position;
+            const vertex = new THREE.Vector3();
+            for(let i=0; i<posAttribute.count; i++) {
+                vertex.fromBufferAttribute(posAttribute, i);
+                vertex.normalize().multiplyScalar(6 + Math.random()*0.3);
+                posAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
+            }
+            geo.computeVertexNormals();
+            const earth = new THREE.Mesh(geo, mat);
+            group.add(earth);
+
+            // Clouds
+            const cloudGeo = new THREE.IcosahedronGeometry(6.4, 3);
+            const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.2 });
+            const clouds = new THREE.Mesh(cloudGeo, cloudMat);
+            group.add(clouds);
+
+            return group;
+        }
+
+        function createMars() {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshPhongMaterial({ color: 0xaa3311, shininess: 5, flatShading: true });
+            const geo = new THREE.IcosahedronGeometry(5.5, 3);
+            
+            const posAttribute = geo.attributes.position;
+            const vertex = new THREE.Vector3();
+            for(let i=0; i<posAttribute.count; i++) {
+                vertex.fromBufferAttribute(posAttribute, i);
+                vertex.normalize().multiplyScalar(5.5 + Math.random()*0.4);
+                posAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
+            }
+            geo.computeVertexNormals();
+            const mars = new THREE.Mesh(geo, mat);
+            group.add(mars);
+
+            return group;
+        }
+
+        function createSaturn() {
+            const group = new THREE.Group();
+            
+            // Planet
+            const mat = new THREE.MeshPhongMaterial({ color: 0xcca176, shininess: 10, flatShading: true });
+            const geo = new THREE.IcosahedronGeometry(5, 3);
+            const saturn = new THREE.Mesh(geo, mat);
+            group.add(saturn);
+
+            // Rings
+            const ringGeo = new THREE.RingGeometry(7, 11, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xd9b38c, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2.5;
+            group.add(ring);
+            
+            const ringGeo2 = new THREE.RingGeometry(11.5, 13, 64);
+            const ringMat2 = new THREE.MeshBasicMaterial({ color: 0xa68a6b, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+            const ring2 = new THREE.Mesh(ringGeo2, ringMat2);
+            ring2.rotation.x = Math.PI / 2.5;
+            group.add(ring2);
+
+            return group;
+        }
+
+        function createVenus() {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshPhongMaterial({ color: 0xffa07a, shininess: 5, flatShading: true });
+            const geo = new THREE.IcosahedronGeometry(5.8, 4);
+            
+            const posAttribute = geo.attributes.position;
+            const vertex = new THREE.Vector3();
+            for(let i=0; i<posAttribute.count; i++) {
+                vertex.fromBufferAttribute(posAttribute, i);
+                vertex.normalize().multiplyScalar(5.8 + Math.random()*0.2);
+                posAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
+            }
+            geo.computeVertexNormals();
+            const venus = new THREE.Mesh(geo, mat);
+            group.add(venus);
+
+            return group;
+        }
+
+        function createJupiter() {
+            const group = new THREE.Group();
+            // Procedural banded texture using horizontal slices
+            for(let i=0; i<10; i++) {
+                const radius = 6 * Math.sin(Math.PI * (i+1)/11);
+                const height = 1.2;
+                const mat = new THREE.MeshPhongMaterial({ color: i%2===0 ? 0xd2b48c : 0xc0a080, shininess: 2, flatShading: true });
+                const geo = new THREE.CylinderGeometry(radius, radius, height, 32);
+                const slice = new THREE.Mesh(geo, mat);
+                slice.position.y = (i - 4.5) * height;
+                group.add(slice);
+            }
+            return group;
+        }
+
+        function createUranus() {
+            const group = new THREE.Group();
+            
+            // Planet
+            const mat = new THREE.MeshPhongMaterial({ color: 0xadd8e6, shininess: 20, flatShading: true });
+            const geo = new THREE.IcosahedronGeometry(5, 4);
+            const uranus = new THREE.Mesh(geo, mat);
+            group.add(uranus);
+
+            // Thin Ring
+            const ringGeo = new THREE.RingGeometry(8, 8.2, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.3 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            // Uranus rotates on its side
+            ring.rotation.x = Math.PI / 2;
+            group.add(ring);
+
+            return group;
+        }
+
+        models['earth'] = createEarth();
+        models['mars'] = createMars();
+        models['saturn'] = createSaturn();
+        models['venus'] = createVenus();
+        models['jupiter'] = createJupiter();
+        models['uranus'] = createUranus();
+
+        // Add all to scene, hide them
+        for(let key in models) {
+            scene.add(models[key]);
+            models[key].visible = false;
+        }
+
+        let currentModel = null;
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+        let currentRotationX = 0;
+        let currentRotationY = 0;
+
+        function showModel(id) {
+            if(currentModel) currentModel.visible = false;
+            
+            currentModel = models[id];
+            currentModel.visible = true;
+            targetRotationX = 0; targetRotationY = 0;
+            currentRotationX = 0; currentRotationY = 0;
+            
+            // Update UI
+            const data = Database[id];
+            document.documentElement.style.setProperty('--accent', data.accent);
+            document.getElementById('infoTitle').innerText = data.title;
+            document.getElementById('infoSub').innerText = data.sub;
+            document.getElementById('infoDesc').innerText = data.desc;
+            
+            data.stats.forEach((v, i) => {
+                document.getElementById(`stat${i+1}-val`).innerText = v;
+            });
+
+            const panel = document.getElementById('infoBox');
+            panel.classList.remove('visible');
+            setTimeout(() => panel.classList.add('visible'), 50);
+            
+            try { playSwoosh(); } catch(e){}
+        }
+
+        // --- Interaction ---
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                showModel(e.target.dataset.id);
+            });
+        });
+
+        // Mouse rotation
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+        document.addEventListener('mousedown', () => { isDragging = true; });
+        document.addEventListener('mouseup', () => { isDragging = false; });
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging && currentModel) {
+                targetRotationY += (e.offsetX - prevMouse.x) * 0.01;
+                targetRotationX += (e.offsetY - prevMouse.y) * 0.01;
+            }
+            prevMouse = { x: e.offsetX, y: e.offsetY };
+        });
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            starField.rotation.y += 0.0005; // Slow space rotation
+            
+            if(currentModel) {
+                // Smooth user rotation + auto rotation
+                currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+                currentRotationX += (targetRotationX - currentRotationX) * 0.1;
+                
+                currentModel.rotation.y = currentRotationY + (Date.now() * 0.0005); // Auto spin
+                currentModel.rotation.x = currentRotationX;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Remove loading screen and start
+        document.getElementById('loading').style.opacity = '0';
+        setTimeout(() => document.getElementById('loading').style.display = 'none', 1000);
+        
+        document.querySelector('[data-id="earth"]').click();
+        animate();
+
+    </script>
+</body>
+</html>
