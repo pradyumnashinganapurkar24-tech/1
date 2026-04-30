@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chrono Shatter — Freeze Time, Shatter Enemies</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000510;overflow:hidden;font-family:'Orbitron',monospace}
+#hud{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10;text-align:center;display:none;color:#fff}
+#sc{font-size:36px;color:#00ddff;text-shadow:0 0 20px #00ddff}
+#freezebar{width:200px;height:8px;background:#111;border-radius:4px;margin:8px auto;border:1px solid #333}
+#freezefill{height:8px;background:#00ddff;border-radius:4px;width:100%;transition:none;box-shadow:0 0 8px #00ddff}
+#frozenindicator{position:fixed;inset:0;border:4px solid #00ddff;pointer-events:none;z-index:5;display:none;box-shadow:inset 0 0 30px rgba(0,220,255,0.2)}
+.ov{position:fixed;inset:0;background:rgba(0,2,8,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;color:#fff}
+h1{font-size:52px;color:#00ddff;text-shadow:0 0 40px #00ddff;margin-bottom:12px}
+p{font-size:15px;color:#aaa;margin:5px 0}
+.btn{margin-top:28px;padding:14px 44px;background:transparent;border:2px solid #00ddff;color:#00ddff;font-size:18px;cursor:pointer;font-family:'Orbitron',monospace;letter-spacing:3px;transition:.3s;border-radius:4px}
+.btn:hover{background:#00ddff;color:#000;box-shadow:0 0 30px #00ddff}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>SCORE <span id="sc">0</span></div>
+  <div style="font-size:13px;color:#888;margin-top:4px">WAVE <span id="wv">1</span> | HOLD SPACE = Freeze Time</div>
+  <div id="freezebar"><div id="freezefill"></div></div>
+</div>
+<div id="frozenindicator"></div>
+<div class="ov" id="start">
+  <h1>CHRONO SHATTER</h1>
+  <p>Enemies attack from all sides. HOLD SPACE to freeze time.</p>
+  <p>Click frozen enemies to SHATTER them for big points!</p>
+  <p>Let the freeze bar recharge between uses.</p>
+  <p style="color:#00ddff;margin-top:10px">WASD Move | HOLD SPACE Freeze | Click Shatter</p>
+  <button class="btn" onclick="startGame()">BREAK TIME</button>
+</div>
+<div class="ov" id="dead" style="display:none">
+  <h1 style="color:#ff3366;text-shadow:0 0 40px #ff3366">SHATTERED</h1>
+  <p style="font-size:22px;margin:14px">SCORE: <span id="fl" style="color:#00ddff">0</span></p>
+  <button class="btn" style="border-color:#ff3366;color:#ff3366" onmouseover="this.style.background='#ff3366';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='#ff3366'" onclick="startGame()">RETRY</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+let scene,cam,ren,player,enemies=[],crystals=[],running=false,score=0,wave=1;
+let px=0,py=0.5,pz=0,keys={};
+let frozen=false,freezeBar=1,freezeRecharge=true;
+let audioCtx,bgN=[];
+const RAY=new THREE.Raycaster(),MOUSE=new THREE.Vector2();
+
+function startAudio(){
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  [[55,0.04,'sine'],[110,0.03,'triangle'],[82,0.025,'sine']].forEach(([f,g,t])=>{
+    const o=audioCtx.createOscillator(),gn=audioCtx.createGain(),lfo=audioCtx.createOscillator(),lg=audioCtx.createGain();
+    o.type=t;o.frequency.value=f;lfo.frequency.value=0.2;lg.gain.value=5;
+    lfo.connect(lg);lg.connect(o.frequency);gn.gain.value=g;
+    o.connect(gn);gn.connect(audioCtx.destination);o.start();lfo.start();bgN.push(o,lfo);
+  });
+}
+function stopAudio(){bgN.forEach(n=>{try{n.stop()}catch(e){}});bgN=[];if(audioCtx){audioCtx.close();audioCtx=null;}}
+
+function initScene(){
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x000510);
+  scene.fog=new THREE.Fog(0x000510,15,40);
+  cam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,80);
+  cam.position.set(0,14,14);cam.lookAt(0,0,0);
+  ren=new THREE.WebGLRenderer({antialias:true});
+  ren.setPixelRatio(devicePixelRatio);ren.setSize(innerWidth,innerHeight);
+  document.body.appendChild(ren.domElement);
+  scene.add(new THREE.AmbientLight(0x001122,4));
+  scene.add(new THREE.DirectionalLight(0x00aaff,2));
+
+  // Arena floor
+  const fg=new THREE.CylinderGeometry(10,10,0.3,32);
+  const fm=new THREE.MeshStandardMaterial({color:0x001133,emissive:0x000a22,roughness:0.8,metalness:0.5});
+  scene.add(new THREE.Mesh(fg,fm));
+  const gg=new THREE.GridHelper(20,20,0x003366,0x001133);gg.position.y=0.16;scene.add(gg);
+
+  // Player
+  const pg=new THREE.SphereGeometry(0.4,12,12);
+  const pm=new THREE.MeshStandardMaterial({color:0x00ddff,emissive:0x0066aa,roughness:0,metalness:1});
+  player=new THREE.Mesh(pg,pm);player.position.y=0.5;
+  player.add(new THREE.PointLight(0x00ddff,4,5));scene.add(player);
+  px=0;py=0.5;pz=0;
+
+  spawnWave();
+}
+
+function spawnWave(){
+  enemies.forEach(e=>scene.remove(e));enemies=[];
+  crystals.forEach(c=>scene.remove(c));crystals=[];
+  const count=4+wave*2;
+  for(let i=0;i<count;i++){
+    const a=(i/count)*Math.PI*2;
+    const r=8+Math.random()*2;
+    const geo=new THREE.OctahedronGeometry(0.5);
+    const mat=new THREE.MeshStandardMaterial({color:0xff2244,emissive:0xaa0022,emissiveIntensity:0.8,roughness:0.2,metalness:0.8});
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.position.set(Math.cos(a)*r,0.5,Math.sin(a)*r);
+    mesh.userData={spd:0.6+wave*0.1,frozen:false};
+    scene.add(mesh);enemies.push(mesh);
+  }
+}
+
+function startGame(){
+  document.getElementById('start').style.display='none';
+  document.getElementById('dead').style.display='none';
+  document.getElementById('hud').style.display='block';
+  if(ren){ren.dispose();document.querySelector('canvas')?.remove();}
+  enemies=[];crystals=[];score=0;wave=1;frozen=false;freezeBar=1;running=true;keys={};
+  initScene();startAudio();loop();
+}
+
+let clk=new THREE.Clock();
+function loop(){
+  if(!running)return;requestAnimationFrame(loop);
+  const dt=Math.min(clk.getDelta(),0.05);
+  const spd=6;
+
+  // Freeze bar
+  frozen=keys[' ']&&freezeBar>0;
+  if(frozen){freezeBar-=dt*0.4;if(freezeBar<0){freezeBar=0;frozen=false;}}
+  else if(!keys[' '])freezeBar=Math.min(1,freezeBar+dt*0.2);
+  document.getElementById('freezefill').style.width=(freezeBar*100)+'%';
+  document.getElementById('freezefill').style.background=frozen?'#00ddff':freezeBar<0.2?'#ff4400':'#0099bb';
+  document.getElementById('frozenindicator').style.display=frozen?'block':'none';
+
+  // Movement
+  const mv=new THREE.Vector3();
+  if(keys['a']||keys['ArrowLeft'])mv.x-=spd;
+  if(keys['d']||keys['ArrowRight'])mv.x+=spd;
+  if(keys['w']||keys['ArrowUp'])mv.z-=spd;
+  if(keys['s']||keys['ArrowDown'])mv.z+=spd;
+  if(mv.length()){px+=mv.x*dt;pz+=mv.z*dt;}
+  const pr=Math.sqrt(px*px+pz*pz);if(pr>9.2){px*=9.2/pr;pz*=9.2/pr;}
+  player.position.set(px,py,pz);
+
+  // Camera orbit slightly
+  cam.position.x=THREE.MathUtils.lerp(cam.position.x,px*0.2,0.03);
+  cam.position.z=THREE.MathUtils.lerp(cam.position.z,pz*0.2+14,0.03);
+  cam.lookAt(0,0,0);
+
+  // Enemies
+  if(!frozen){
+    enemies.forEach(e=>{
+      const d=new THREE.Vector3(px-e.position.x,0,pz-e.position.z).normalize();
+      e.position.addScaledVector(d,e.userData.spd*dt);
+      e.rotation.x+=dt*2;e.rotation.y+=dt;
+      if(new THREE.Vector3(px-e.position.x,0,pz-e.position.z).length()<0.8){gameOver();return;}
+    });
+  } else {
+    enemies.forEach(e=>{e.material.color.set(0x88ccff);e.material.emissive.set(0x4488aa);e.userData.frozen=true;});
+  }
+
+  // Crystals (shattered pieces)
+  crystals.forEach((c,i)=>{
+    c.position.addScaledVector(c.userData.vel,dt);
+    c.position.y-=3*dt;c.userData.vel.multiplyScalar(0.98);
+    c.rotation.x+=dt*5;c.rotation.y+=dt*3;
+    if(c.position.y<-2){scene.remove(c);crystals.splice(i,1);}
+  });
+
+  // Check wave clear
+  if(enemies.length===0&&crystals.length===0){
+    wave++;document.getElementById('wv').textContent=wave;
+    spawnWave();waveSound();
+  }
+
+  // Update score display
+  document.getElementById('sc').textContent=score;
+  ren.render(scene,cam);
+}
+
+// Click to shatter frozen enemies
+window.addEventListener('click',e=>{
+  if(!running||!frozen)return;
+  MOUSE.x=(e.clientX/innerWidth)*2-1;
+  MOUSE.y=-(e.clientY/innerHeight)*2+1;
+  RAY.setFromCamera(MOUSE,cam);
+  const hits=RAY.intersectObjects(enemies);
+  if(hits.length){
+    const en=hits[0].object;
+    if(en.userData.frozen){
+      shatter(en);
+      enemies=enemies.filter(e=>e!==en);
+      score+=200*wave;
+    }
+  }
+});
+
+function shatter(mesh){
+  scene.remove(mesh);
+  for(let i=0;i<12;i++){
+    const g=new THREE.TetrahedronGeometry(0.15);
+    const m=new THREE.MeshStandardMaterial({color:0x88ccff,emissive:0x4488aa,emissiveIntensity:1,roughness:0,metalness:1,transparent:true,opacity:0.9});
+    const c=new THREE.Mesh(g,m);
+    c.position.copy(mesh.position);
+    c.userData={vel:new THREE.Vector3((Math.random()-.5)*5,(Math.random())*4,(Math.random()-.5)*5)};
+    scene.add(c);crystals.push(c);
+  }
+  shatterSound();
+}
+
+function shatterSound(){
+  if(!audioCtx)return;
+  [880,1100,1320].forEach((f,i)=>{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.frequency.value=f;o.type='sine';
+    g.gain.setValueAtTime(0.1,audioCtx.currentTime+i*0.05);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+i*0.05+0.3);
+    o.connect(g);g.connect(audioCtx.destination);o.start(audioCtx.currentTime+i*0.05);o.stop(audioCtx.currentTime+i*0.05+0.3);
+  });
+}
+
+function waveSound(){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.frequency.value=440;o.type='sine';o.frequency.linearRampToValueAtTime(880,audioCtx.currentTime+0.5);
+  g.gain.setValueAtTime(0.2,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.6);
+  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+0.6);
+}
+
+function gameOver(){
+  running=false;stopAudio();
+  document.getElementById('hud').style.display='none';
+  document.getElementById('frozenindicator').style.display='none';
+  document.getElementById('fl').textContent=score;
+  document.getElementById('dead').style.display='flex';
+}
+
+document.addEventListener('keydown',e=>{keys[e.key]=true;if([' '].includes(e.key))e.preventDefault();});
+document.addEventListener('keyup',e=>keys[e.key]=false);
+window.addEventListener('resize',()=>{if(cam&&ren){cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight);}});
+</script>
+</body>
+</html>
