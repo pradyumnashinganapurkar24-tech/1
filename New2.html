@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abyssal — Deep Sea Exploration</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Raleway:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --deep: #00051a;
+            --ocean: #001a3d;
+            --teal: #004080;
+            --aqua: #00b4d8;
+            --glow: #90e0ef;
+            --glass-bg: rgba(0, 26, 61, 0.4);
+            --glass-border: rgba(0, 180, 216, 0.2);
+        }
+
+        body {
+            background: linear-gradient(to bottom, #001233, var(--deep));
+            color: #fff;
+            font-family: 'Raleway', sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(150%);
+            -webkit-backdrop-filter: blur(20px) saturate(150%);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 180, 216, 0.05);
+        }
+
+        /* Bubbles */
+        .bubbles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+        .bubble {
+            position: absolute; bottom: -50px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, rgba(144, 224, 239, 0.5), rgba(0, 180, 216, 0.1));
+            animation: rise linear infinite;
+        }
+        @keyframes rise {
+            to { transform: translateY(-110vh) scale(0.5) translateX(20px); opacity: 0; }
+        }
+
+        /* Water caustics overlay */
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background: radial-gradient(ellipse at 50% -20%, rgba(0, 180, 216, 0.3), transparent 70%);
+            z-index: 1; pointer-events: none; filter: blur(50px);
+        }
+
+        nav {
+            position: fixed; top: 0; width: 100%; padding: 24px 60px;
+            display: flex; justify-content: space-between; align-items: center; z-index: 100;
+            background: linear-gradient(to bottom, rgba(0, 5, 26, 0.95), transparent);
+            backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,180,216,0.1);
+        }
+
+        .logo {
+            font-family: 'Cinzel', serif; font-size: 1.8rem; letter-spacing: 6px;
+            color: var(--aqua); text-transform: uppercase; text-shadow: 0 0 20px var(--aqua);
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.6); text-decoration: none; margin-left: 36px;
+            font-size: 0.8rem; letter-spacing: 3px; text-transform: uppercase;
+            transition: all 0.3s; position: relative;
+        }
+        .nav-links a::after {
+            content: ''; position: absolute; bottom: -5px; left: 0; width: 0%; height: 2px;
+            background: var(--glow); transition: width 0.3s; box-shadow: 0 0 10px var(--glow);
+        }
+        .nav-links a:hover { color: var(--glow); }
+        .nav-links a:hover::after { width: 100%; }
+
+        .content { position: relative; z-index: 10; }
+
+        .hero { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; padding: 100px 60px 0; }
+
+        /* 3D Submarine */
+        .submarine-scene {
+            position: absolute; right: 8%; top: 50%; transform: translateY(-50%);
+            width: 450px; height: 350px; perspective: 1000px;
+        }
+        .sub {
+            width: 100%; height: 100%; transform-style: preserve-3d;
+            animation: subFloat 6s ease-in-out infinite, subRoll 15s linear infinite;
+        }
+        @keyframes subFloat { 0%, 100% { transform: translateY(0) rotateX(0deg) } 50% { transform: translateY(-30px) rotateX(3deg) } }
+        @keyframes subRoll { 0% { filter: hue-rotate(0deg) } 100% { filter: hue-rotate(30deg) } }
+
+        .sub-body {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 320px; height: 100px; background: linear-gradient(135deg, #1a4a6e, #0a2840, #041424);
+            border-radius: 50px; box-shadow: 0 0 50px rgba(0, 180, 216, 0.4), inset 0 -10px 20px rgba(0,0,0,0.8), inset 0 5px 15px rgba(144, 224, 239, 0.3);
+        }
+        .sub-body::before {
+            content: ''; position: absolute; top: 12px; left: 25px; right: 25px; height: 4px;
+            background: linear-gradient(90deg, transparent, rgba(144, 224, 239, 0.6), transparent); border-radius: 2px;
+        }
+
+        .sub-tower {
+            position: absolute; top: -45px; left: 50%; transform: translateX(-40%);
+            width: 80px; height: 60px; background: linear-gradient(135deg, #1a4a6e, #0a2840);
+            border-radius: 12px 12px 0 0; box-shadow: 0 0 25px rgba(0, 180, 216, 0.3);
+        }
+
+        .sub-window {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 34px; height: 34px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(144, 224, 239, 0.9), rgba(0, 180, 216, 0.5));
+            box-shadow: 0 0 20px rgba(144, 224, 239, 0.9); animation: windowPulse 3s ease-in-out infinite;
+        }
+        @keyframes windowPulse { 0%, 100% { box-shadow: 0 0 20px rgba(144, 224, 239, 0.9) } 50% { box-shadow: 0 0 40px rgba(144, 224, 239, 1), 0 0 80px rgba(0,180,216,0.6) } }
+
+        .sonar {
+            position: absolute; top: 50%; left: -12px; transform: translateY(-50%);
+            width: 24px; height: 6px; background: var(--glow); border-radius: 3px; box-shadow: 0 0 15px var(--glow);
+        }
+        .sonar::before {
+            content: ''; position: absolute; right: -90px; top: 50%; transform: translateY(-50%);
+            border: 12px solid transparent; border-right: 0; border-left: 70px solid rgba(0, 180, 216, 0.25);
+            animation: sonarPing 2s ease-out infinite;
+        }
+        @keyframes sonarPing { 0% { opacity: 1; transform: translateY(-50%) scaleY(1) } 100% { opacity: 0; transform: translateY(-50%) scaleY(5) } }
+
+        .propeller {
+            position: absolute; right: -20px; top: 50%; transform: translateY(-50%);
+            width: 35px; height: 70px; animation: spin 0.4s linear infinite;
+        }
+        .propeller::before, .propeller::after {
+            content: ''; position: absolute; left: 50%; width: 10px; height: 32px;
+            background: rgba(144, 224, 239, 0.7); border-radius: 5px; box-shadow: 0 0 10px rgba(144,224,239,0.5);
+        }
+        .propeller::before { transform: translateX(-50%) rotate(0deg); }
+        .propeller::after { transform: translateX(-50%) rotate(90deg); }
+        @keyframes spin { to { transform: translateY(-50%) rotate(360deg) } }
+
+        .hero-text { max-width: 550px; z-index: 2; }
+        
+        .telemetry { display: flex; gap: 20px; margin-bottom: 25px; flex-wrap: wrap; }
+        .telemetry-item { display: flex; flex-direction: column; }
+        .telemetry-val { font-family: 'Cinzel', serif; font-size: 1.2rem; color: var(--glow); font-weight: 700; text-shadow: 0 0 10px rgba(144,224,239,0.5); }
+        .telemetry-label { font-size: 0.6rem; letter-spacing: 3px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+
+        h1 { font-family: 'Cinzel', serif; font-size: clamp(3rem, 6vw, 5.5rem); font-weight: 900; line-height: 1.1; margin-bottom: 24px; text-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        h1 em { display: block; color: var(--aqua); font-style: normal; font-size: 0.6em; letter-spacing: 6px; text-shadow: 0 0 20px rgba(0,180,216,0.6); }
+
+        p.lead { font-size: 1.05rem; color: rgba(255, 255, 255, 0.7); line-height: 1.8; margin-bottom: 40px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+
+        .btn-group { display: flex; gap: 16px; flex-wrap: wrap; }
+        .btn {
+            padding: 16px 36px; font-size: 0.85rem; letter-spacing: 4px; text-transform: uppercase;
+            text-decoration: none; transition: all 0.4s; font-family: 'Raleway', sans-serif; font-weight: 700; border-radius: 4px;
+        }
+        .btn-primary { background: linear-gradient(135deg, var(--aqua), var(--teal)); color: #fff; box-shadow: 0 0 20px rgba(0,180,216,0.4); border: 1px solid var(--glow); }
+        .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,180,216,0.6); background: linear-gradient(135deg, var(--glow), var(--aqua)); }
+
+        .dives { padding: 100px 60px; position: relative; }
+        .section-header { text-align: center; margin-bottom: 80px; }
+        .section-label { font-size: 0.8rem; letter-spacing: 6px; color: var(--aqua); text-transform: uppercase; display: block; margin-bottom: 16px; text-shadow: 0 0 10px rgba(0,180,216,0.5); }
+        h2 { font-family: 'Cinzel', serif; font-size: 3rem; font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+
+        .dive-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+
+        .dive-card {
+            padding: 50px 40px; position: relative; overflow: hidden; transition: transform 0.4s, border-color 0.4s;
+            cursor: pointer; display: flex; flex-direction: column; justify-content: center;
+        }
+        .dive-card:hover { transform: translateY(-15px); border-color: var(--glow); box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,180,216,0.1); }
+        
+        .dive-card::after {
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, transparent, var(--glow), transparent);
+            transform: scaleX(0); transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .dive-card:hover::after { transform: scaleX(1); }
+
+        .dive-depth { font-family: 'Cinzel', serif; font-size: 3.5rem; color: rgba(0, 180, 216, 0.15); font-weight: 900; margin-bottom: 20px; transition: color 0.4s; }
+        .dive-card:hover .dive-depth { color: rgba(0, 180, 216, 0.4); }
+        .dive-name { font-family: 'Cinzel', serif; font-size: 1.4rem; margin-bottom: 16px; color: var(--glow); text-shadow: 0 0 10px rgba(144,224,239,0.3); }
+        .dive-desc { font-size: 0.95rem; color: rgba(255, 255, 255, 0.6); line-height: 1.8; }
+
+        /* Loader */
+        .loader { width: 40px; height: 40px; border: 3px solid rgba(0,180,216,0.2); border-radius: 50%; border-top-color: var(--glow); animation: spin 1s infinite; margin: 0 auto; }
+
+        /* Waitlist Section */
+        .waitlist { padding: 100px 60px; text-align: center; }
+        .waitlist-container { max-width: 700px; margin: 0 auto; padding: 60px; }
+        .waitlist-title { font-family: 'Cinzel', serif; font-size: 2.2rem; color: #fff; margin-bottom: 15px; text-shadow: 0 0 15px rgba(0,180,216,0.4); }
+        .waitlist-desc { color: rgba(255,255,255,0.6); font-size: 1rem; margin-bottom: 40px; }
+        .form-group { display: flex; gap: 20px; }
+        .form-input { 
+            flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border); border-radius: 4px;
+            padding: 18px 24px; color: #fff; font-family: 'Raleway', sans-serif; font-size: 1rem; outline: none; transition: 0.3s;
+        }
+        .form-input:focus { border-color: var(--glow); box-shadow: 0 0 20px rgba(144,224,239,0.2); }
+        .form-input::placeholder { color: rgba(255,255,255,0.4); }
+        
+        .msg { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; font-size: 0.9rem; }
+        .msg.success { display: block; background: rgba(0,255,100,0.1); color: #00ffaa; border: 1px solid #00ffaa; }
+        .msg.error { display: block; background: rgba(255,50,50,0.1); color: #ff5555; border: 1px solid #ff5555; }
+    </style>
+</head>
+<body>
+    <div class="bubbles" id="bubbles"></div>
+    <div class="content">
+        <nav>
+            <div class="logo">Abyssal</div>
+            <div class="nav-links">
+                <a href="#expeditions">Expeditions</a>
+                <a href="#">Research</a>
+                <a href="#book">Book Dive</a>
+            </div>
+        </nav>
+        
+        <section class="hero">
+            <div class="hero-text">
+                <div class="telemetry">
+                    <div class="telemetry-item">
+                        <span class="telemetry-val" id="tel-depth">0m</span>
+                        <span class="telemetry-label">Current Depth</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-val" id="tel-pressure">0 atm</span>
+                        <span class="telemetry-label">External Pressure</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-val" id="tel-temp">0.0°C</span>
+                        <span class="telemetry-label">Water Temp</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-val" id="tel-oxygen">0.0%</span>
+                        <span class="telemetry-label">O2 Reserves</span>
+                    </div>
+                </div>
+                
+                <h1>Into the <em>Midnight Zone</em></h1>
+                <p class="lead">Humanity's last unexplored frontier lies beneath the waves. We venture where pressure crushes steel — into the abyss where evolution wrote its strangest chapters.</p>
+                <div class="btn-group">
+                    <a href="#book" class="btn btn-primary">Book Expedition</a>
+                </div>
+            </div>
+            <div class="submarine-scene">
+                <div class="sub">
+                    <div class="sub-body">
+                        <div class="sub-tower"><div class="sub-window"></div></div>
+                        <div class="sonar"></div>
+                        <div class="propeller"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="dives" id="expeditions">
+            <div class="section-header">
+                <span class="section-label">Exploration Zones</span>
+                <h2>Dive Classifications</h2>
+            </div>
+            <div id="dives-loader" class="loader"></div>
+            <div class="dive-cards" id="dives-container" style="display:none;">
+                <!-- Loaded from backend -->
+            </div>
+        </section>
+
+        <section class="waitlist" id="book">
+            <div class="waitlist-container glass-panel">
+                <h2 class="waitlist-title">Secure Your Descent</h2>
+                <p class="waitlist-desc">Only 24 civilians will visit the Challenger Deep this year. Enter your comms frequency.</p>
+                <div class="form-group">
+                    <input type="email" id="email-input" class="form-input" placeholder="Enter your email address">
+                    <button class="btn btn-primary" onclick="bookExpedition()">Request Clearance</button>
+                </div>
+                <div id="form-msg" class="msg"></div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5004/api';
+
+        // Bubbles JS Generator
+        const bc = document.getElementById('bubbles');
+        for (let i = 0; i < 40; i++) {
+            const b = document.createElement('div');
+            b.className = 'bubble';
+            const sz = Math.random() * 25 + 5;
+            b.style.cssText = `width:${sz}px;height:${sz}px;left:${Math.random() * 100}%;animation-duration:${Math.random() * 20 + 8}s;animation-delay:${Math.random() * 10}s;opacity:${Math.random() * 0.4 + 0.1}`;
+            bc.appendChild(b);
+        }
+
+        // Fetch Telemetry Data
+        async function fetchTelemetry() {
+            try {
+                const res = await fetch(`${API_URL}/telemetry`);
+                const data = await res.json();
+                document.getElementById('tel-depth').innerText = data.depth + 'm';
+                document.getElementById('tel-pressure').innerText = data.pressure;
+                document.getElementById('tel-temp').innerText = data.temp;
+                document.getElementById('tel-oxygen').innerText = data.oxygen;
+            } catch (err) { console.error('Telemetry offline', err); }
+        }
+
+        // Fetch Dive Zones
+        async function fetchDives() {
+            try {
+                const res = await fetch(`${API_URL}/dives`);
+                const data = await res.json();
+                const container = document.getElementById('dives-container');
+                container.innerHTML = '';
+                
+                data.dives.forEach(d => {
+                    const card = document.createElement('div');
+                    card.className = 'dive-card glass-panel';
+                    card.innerHTML = `
+                        <div class="dive-depth">${d.depth}</div>
+                        <div class="dive-name">${d.name}</div>
+                        <div class="dive-desc">${d.description}</div>
+                    `;
+                    container.appendChild(card);
+                });
+                document.getElementById('dives-loader').style.display = 'none';
+                container.style.display = 'grid';
+            } catch (err) { console.error('Sonar offline', err); }
+        }
+
+        // Book Expedition
+        async function bookExpedition() {
+            const emailInp = document.getElementById('email-input');
+            const msgBox = document.getElementById('form-msg');
+            msgBox.className = 'msg';
+            
+            if(!emailInp.value) {
+                msgBox.innerText = 'Error: No frequency provided.';
+                msgBox.classList.add('error'); return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/book-expedition`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email: emailInp.value })
+                });
+                const data = await res.json();
+                if(res.ok) {
+                    msgBox.innerText = data.message;
+                    msgBox.classList.add('success');
+                    emailInp.value = '';
+                } else {
+                    msgBox.innerText = data.error;
+                    msgBox.classList.add('error');
+                }
+            } catch(e) {
+                msgBox.innerText = 'Transmission failed. Deep sea interference.';
+                msgBox.classList.add('error');
+            }
+        }
+
+        fetchDives();
+        fetchTelemetry();
+        setInterval(fetchTelemetry, 2000);
+    </script>
+</body>
+</html>
