@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crystal Resonance — Shatter the Maze</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05000a;overflow:hidden;font-family:'Orbitron',monospace;cursor:crosshair}
+#hud{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10;text-align:center;display:none;color:#fff}
+#sc{font-size:36px;color:#cc44ff;text-shadow:0 0 20px #cc44ff}
+#freqbar{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:10;text-align:center;display:none;color:#888;font-size:13px}
+#freqslider{width:240px;height:8px;background:#111;border-radius:4px;margin:8px auto;border:1px solid #333;cursor:pointer;appearance:none;-webkit-appearance:none}
+#freqslider::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border-radius:50%;background:#cc44ff;box-shadow:0 0 10px #cc44ff;cursor:pointer}
+.ov{position:fixed;inset:0;background:rgba(2,0,5,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;color:#fff}
+h1{font-size:52px;color:#cc44ff;text-shadow:0 0 40px #cc44ff;margin-bottom:12px}
+p{font-size:15px;color:#aaa;margin:5px 0}
+.btn{margin-top:28px;padding:14px 44px;background:transparent;border:2px solid #cc44ff;color:#cc44ff;font-size:18px;cursor:pointer;font-family:'Orbitron',monospace;letter-spacing:3px;transition:.3s;border-radius:4px}
+.btn:hover{background:#cc44ff;color:#000;box-shadow:0 0 30px #cc44ff}
+</style>
+</head>
+<body>
+<div id="hud"><div>SCORE <span id="sc">0</span> | WAVE <span id="wv">1</span></div><div style="font-size:13px;color:#888;margin-top:4px">Click to fire | Match crystal color with slider!</div></div>
+<div id="freqbar">
+  <div>FREQUENCY: <span id="fval">50</span>%</div>
+  <input type="range" id="freqslider" min="0" max="100" value="50">
+</div>
+<div class="ov" id="start">
+  <h1>CRYSTAL RESONANCE</h1>
+  <p>Fire sound waves at crystals. Match the FREQUENCY to shatter them!</p>
+  <p>Wrong frequency = wave reflects back and hurts you.</p>
+  <p>Use the slider to tune your frequency. Click to fire!</p>
+  <p style="color:#cc44ff;margin-top:10px">Slider = Tune Freq | Click = Fire</p>
+  <button class="btn" onclick="startGame()">RESONATE</button>
+</div>
+<div class="ov" id="dead" style="display:none">
+  <h1 style="color:#ff3366;text-shadow:0 0 40px #ff3366">SHATTERED</h1>
+  <p style="font-size:22px;margin:14px">SCORE: <span id="fl" style="color:#cc44ff">0</span></p>
+  <button class="btn" style="border-color:#ff3366;color:#ff3366" onmouseover="this.style.background='#ff3366';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='#ff3366'" onclick="startGame()">RETRY</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+let scene,cam,ren,player,crystals=[],bullets=[],running=false,score=0,wave=1,hp=3;
+let px=0,pz=0,keys={},playerFreq=0.5;
+let audioCtx,bgN=[];
+const RAY=new THREE.Raycaster(),MOUSE=new THREE.Vector2();
+
+document.getElementById('freqslider').addEventListener('input',function(){
+  playerFreq=this.value/100;
+  document.getElementById('fval').textContent=this.value;
+});
+
+function startAudio(){
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  [[55,0.04,'sine'],[82,0.03,'triangle'],[110,0.025,'sine']].forEach(([f,g,t])=>{
+    const o=audioCtx.createOscillator(),gn=audioCtx.createGain(),lfo=audioCtx.createOscillator(),lg=audioCtx.createGain();
+    o.type=t;o.frequency.value=f;lfo.frequency.value=0.15;lg.gain.value=4;
+    lfo.connect(lg);lg.connect(o.frequency);gn.gain.value=g;
+    o.connect(gn);gn.connect(audioCtx.destination);o.start();lfo.start();bgN.push(o,lfo);
+  });
+}
+function stopAudio(){bgN.forEach(n=>{try{n.stop()}catch(e){}});bgN=[];if(audioCtx){audioCtx.close();audioCtx=null;}}
+
+function freqToColor(f){return new THREE.Color().setHSL(f*0.8,1,0.55);}
+
+function initScene(){
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x05000a);
+  scene.fog=new THREE.Fog(0x05000a,15,45);
+  cam=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,0.1,80);
+  cam.position.set(0,16,16);cam.lookAt(0,0,0);
+  ren=new THREE.WebGLRenderer({antialias:true});
+  ren.setPixelRatio(devicePixelRatio);ren.setSize(innerWidth,innerHeight);
+  document.body.appendChild(ren.domElement);
+  scene.add(new THREE.AmbientLight(0x110022,4));
+  scene.add(new THREE.DirectionalLight(0xaa66ff,2));
+
+  // Arena
+  const ag=new THREE.CylinderGeometry(10,10,0.3,32);
+  const am=new THREE.MeshStandardMaterial({color:0x110022,emissive:0x0a0018,roughness:0.8,metalness:0.5});
+  scene.add(new THREE.Mesh(ag,am));
+  scene.add(new THREE.GridHelper(20,20,0x220044,0x110022));
+
+  // Player
+  const pg=new THREE.SphereGeometry(0.4,10,10);
+  const pm=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xcc44ff,emissiveIntensity:0.8,roughness:0,metalness:1});
+  player=new THREE.Mesh(pg,pm);player.position.y=0.5;
+  player.add(new THREE.PointLight(0xcc44ff,4,5));scene.add(player);
+  px=0;pz=0;spawnCrystals();
+}
+
+function spawnCrystals(){
+  crystals.forEach(c=>scene.remove(c));crystals=[];
+  const count=3+wave*2;
+  for(let i=0;i<count;i++){
+    const f=Math.random();
+    const col=freqToColor(f);
+    const a=(i/count)*Math.PI*2;
+    const r=4+Math.random()*4;
+    const geo=new THREE.OctahedronGeometry(0.6+Math.random()*0.3);
+    const mat=new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:0.8,roughness:0,metalness:1,transparent:true,opacity:0.9});
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.position.set(Math.cos(a)*r,0.8,Math.sin(a)*r);
+    mesh.userData={freq:f,hp:2+wave};scene.add(mesh);crystals.push(mesh);
+  }
+}
+
+function startGame(){
+  document.getElementById('start').style.display='none';
+  document.getElementById('dead').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('freqbar').style.display='block';
+  if(ren){ren.dispose();document.querySelector('canvas')?.remove();}
+  crystals=[];bullets=[];score=0;wave=1;hp=3;running=true;keys={};
+  initScene();startAudio();loop();
+}
+
+let clk=new THREE.Clock();
+function loop(){
+  if(!running)return;requestAnimationFrame(loop);
+  const dt=Math.min(clk.getDelta(),0.05);
+  const spd=6;
+
+  // Movement
+  const mv=new THREE.Vector3();
+  if(keys['a']||keys['ArrowLeft'])mv.x-=spd;
+  if(keys['d']||keys['ArrowRight'])mv.x+=spd;
+  if(keys['w']||keys['ArrowUp'])mv.z-=spd;
+  if(keys['s']||keys['ArrowDown'])mv.z+=spd;
+  if(mv.length()){px+=mv.x*dt;pz+=mv.z*dt;}
+  const pr=Math.sqrt(px*px+pz*pz);if(pr>9.2){px*=9.2/pr;pz*=9.2/pr;}
+  player.position.set(px,0.5,pz);
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    b.position.addScaledVector(b.userData.dir,12*dt);
+    b.userData.life-=dt;
+    if(b.userData.life<0||b.position.distanceTo(player.position)>20){scene.remove(b);bullets.splice(i,1);continue;}
+    // Crystal collision
+    let hit=false;
+    for(let j=crystals.length-1;j>=0;j--){
+      const c=crystals[j];
+      if(b.position.distanceTo(c.position)<0.9){
+        const match=Math.abs(b.userData.freq-c.userData.freq)<0.12;
+        if(match){
+          c.userData.hp--;hitSound(true);
+          if(c.userData.hp<=0){shatter(c);crystals.splice(j,1);score+=300*wave;document.getElementById('sc').textContent=score;}
+          else{c.material.emissiveIntensity=1;setTimeout(()=>{if(c.material)c.material.emissiveIntensity=0.8;},200);}
+        } else {
+          // Reflect back
+          hitSound(false);hp--;if(hp<=0){gameOver();return;}
+          // shake
+          document.body.style.animation='shake 0.3s';setTimeout(()=>document.body.style.animation='',400);
+        }
+        scene.remove(b);bullets.splice(i,1);hit=true;break;
+      }
+    }
+  }
+
+  // Crystals bob and rotate
+  crystals.forEach(c=>{c.rotation.y+=dt*1.5;c.position.y=0.8+Math.sin(Date.now()*0.001+c.userData.freq*10)*0.2;});
+
+  if(crystals.length===0){wave++;document.getElementById('wv').textContent=wave;spawnCrystals();}
+
+  cam.position.x=THREE.MathUtils.lerp(cam.position.x,px*0.2,0.05);
+  cam.position.z=THREE.MathUtils.lerp(cam.position.z,pz*0.2+16,0.05);
+  cam.lookAt(0,0,0);
+  ren.render(scene,cam);
+}
+
+window.addEventListener('click',e=>{
+  if(!running)return;
+  MOUSE.x=(e.clientX/innerWidth)*2-1;
+  MOUSE.y=-(e.clientY/innerHeight)*2+1;
+  RAY.setFromCamera(MOUSE,cam);
+  const target=new THREE.Vector3();
+  RAY.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-0.5),target);
+  const dir=new THREE.Vector3().subVectors(target,player.position).normalize();dir.y=0;
+  if(dir.length()<0.1)return;
+  const col=freqToColor(playerFreq);
+  const geo=new THREE.SphereGeometry(0.18,6,6);
+  const mat=new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:1,roughness:0,metalness:1});
+  const bullet=new THREE.Mesh(geo,mat);
+  bullet.position.copy(player.position);
+  bullet.userData={dir,freq:playerFreq,life:3};
+  bullet.add(new THREE.PointLight(col,3,2));
+  scene.add(bullet);bullets.push(bullet);
+  fireSound(playerFreq);
+});
+
+function shatter(mesh){
+  scene.remove(mesh);
+  for(let i=0;i<10;i++){
+    const g=new THREE.TetrahedronGeometry(0.12);
+    const m=new THREE.MeshStandardMaterial({color:mesh.material.color,emissive:mesh.material.emissive,emissiveIntensity:1,transparent:true,opacity:0.9});
+    const c=new THREE.Mesh(g,m);c.position.copy(mesh.position);
+    c.userData={vel:new THREE.Vector3((Math.random()-.5)*4,(Math.random())*3,(Math.random()-.5)*4)};
+    scene.add(c);
+    // remove after a bit
+    setTimeout(()=>scene.remove(c),1500);
+  }
+}
+
+function fireSound(f){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.frequency.value=200+f*400;o.type='sawtooth';
+  g.gain.setValueAtTime(0.1,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.2);
+  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+0.2);
+}
+function hitSound(match){
+  if(!audioCtx)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.frequency.value=match?880:220;o.type=match?'sine':'sawtooth';
+  g.gain.setValueAtTime(0.15,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.3);
+  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+0.3);
+}
+
+function gameOver(){
+  running=false;stopAudio();
+  document.getElementById('hud').style.display='none';
+  document.getElementById('freqbar').style.display='none';
+  document.getElementById('fl').textContent=score;
+  document.getElementById('dead').style.display='flex';
+}
+document.addEventListener('keydown',e=>{keys[e.key]=true;if([' '].includes(e.key))e.preventDefault();});
+document.addEventListener('keyup',e=>keys[e.key]=false);
+window.addEventListener('resize',()=>{if(cam&&ren){cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight);}});
+</script>
+<style>@keyframes shake{0%,100%{transform:none}25%{transform:translate(-6px,0)}75%{transform:translate(6px,0)}}</style>
+</body>
+</html>
